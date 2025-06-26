@@ -1,7 +1,7 @@
+
 'use client';
 import { useRef, useEffect, useCallback } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets } from 'pixi.js';
-import { Spritesheet } from 'pixi.js/spritesheet';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { db } from '@/lib/firebase';
@@ -34,7 +34,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     if (!localPlayer) return;
     const playerDocRef = doc(db, 'players', localPlayer.uid);
     await updateDoc(playerDocRef, data);
-  }, 100), [currentPlayerRef]);
+  }, 100), []);
 
   useEffect(() => {
     if (!pixiContainer.current || appRef.current) return;
@@ -83,17 +83,17 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
         
         let moved = dx !== 0 || dy !== 0;
-        let newAnimationName = playerSprite.currentAnimationName || `${localPlayer.direction}_walk`;
-        let newDirection = playerSprite.currentAnimationName?.split('_')[0] as Player['direction'] ?? 'front';
+        let currentAnimationName = playerSprite.currentAnimationName || `${localPlayer.direction}_walk`;
+        let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as Player['direction']) ?? 'front';
         let animationShouldPlay = moved;
-
+        
         if (moved) {
             if (dy < 0) { newDirection = 'back'; }
             else if (dy > 0) { newDirection = 'front'; }
             else if (dx < 0) { newDirection = 'left'; }
             else if (dx > 0) { newDirection = 'right'; }
             
-            newAnimationName = `${newDirection}_walk`;
+            const newAnimationName = `${newDirection}_walk`;
             
             if (dx !== 0 && dy !== 0) {
                 const length = Math.sqrt(dx * dx + dy * dy);
@@ -104,9 +104,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
             playerSprite.x += dx * speed * time.delta;
             playerSprite.y += dy * speed * time.delta;
           
-            if (playerSprite.currentAnimationName !== newAnimationName) {
-                playerSprite.textures = sheet.animations[newAnimationName];
-                playerSprite.currentAnimationName = newAnimationName;
+            if (currentAnimationName !== newAnimationName) {
+                if(sheet.animations[newAnimationName]) {
+                    playerSprite.textures = sheet.animations[newAnimationName];
+                    playerSprite.currentAnimationName = newAnimationName;
+                }
             }
           
             updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
@@ -155,7 +157,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
             const character = CHARACTERS_MAP[id];
             const texture = await Assets.load(character.png.src);
             const sheet = new Spritesheet(
-                texture,
+                texture.baseTexture,
                 character.json
             );
             await sheet.parse();
@@ -185,18 +187,15 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (playerSpritesRef.current[player.uid]) {
           const sprite = playerSpritesRef.current[player.uid];
           const text = playerTextRef.current[player.uid];
-
-          const newBaseTexture = sheet.baseTexture;
-          const oldBaseTexture = (sprite.textures[0] as any)?.baseTexture;
-
-          if (oldBaseTexture && newBaseTexture.uid !== oldBaseTexture.uid) {
-            world.removeChild(sprite, text);
-            delete playerSpritesRef.current[player.uid];
-            delete playerTextRef.current[player.uid];
+          
+          if(sprite.textures[0].baseTexture !== sheet.baseTexture){
+             world.removeChild(sprite, text);
+             delete playerSpritesRef.current[player.uid];
+             delete playerTextRef.current[player.uid];
           } else if (!isCurrentUser) {
             sprite.x = player.x;
             sprite.y = player.y;
-            if (sprite.currentAnimationName !== animationName) {
+            if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
               sprite.textures = sheet.animations[animationName];
               sprite.currentAnimationName = animationName;
               sprite.gotoAndStop(0);
@@ -208,6 +207,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         }
 
         if (!playerSpritesRef.current[player.uid]) {
+          if(!sheet.animations[animationName]) continue;
+          
           const sprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
