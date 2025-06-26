@@ -13,7 +13,7 @@ export const AVATAR_SPRITES = [
 ].map(fileName => `${storageBaseUrl}${avatarPath}${fileName}?alt=media`);
 
 
-export const WORLD_TILESET_URL = `${storageBaseUrl}assetsPals%2Ftiles%2Fworld%2FtopDown_baseTiles.png?alt=media`;
+export const WORLD_TILESET_URL = `${storageBaseUrl}assets%2Ftiles%2Fworld%2FtopDown_baseTiles.png?alt=media`;
 
 export const MAP_WIDTH = 50;
 export const MAP_HEIGHT = 50;
