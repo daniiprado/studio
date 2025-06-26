@@ -19,7 +19,6 @@ export function useGoogleApis(accessToken: string | null) {
       gapi.load('client', async () => {
         try {
           await gapi.client.init({
-            apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
             discoveryDocs: DISCOVERY_DOCS,
             scope: SCOPES,
           });
