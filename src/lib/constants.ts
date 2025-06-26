@@ -1,7 +1,7 @@
 const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
 const storageBaseUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/`;
 
-const avatarPath = 'assetsPals%2Ftiles%2Favatars%2F';
+const avatarPath = 'assets%2F';
 
 export const AVATAR_SPRITES = [
   'spr_alex.png',
@@ -13,7 +13,7 @@ export const AVATAR_SPRITES = [
 ].map(fileName => `${storageBaseUrl}${avatarPath}${fileName}?alt=media`);
 
 
-export const WORLD_TILESET_URL = `${storageBaseUrl}assetsPals%2Ftiles%2Fworld%2FtopDown_baseTiles.png?alt=media`;
+export const WORLD_TILESET_URL = `${storageBaseUrl}assets%2Foryx_16bit_fantasy_world_trans.png?alt=media`;
 
 export const MAP_WIDTH = 50;
 export const MAP_HEIGHT = 50;

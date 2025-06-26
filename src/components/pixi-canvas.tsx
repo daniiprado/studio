@@ -66,8 +66,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       // Load assets
       const tilesetTexture = await PIXI.Assets.load(WORLD_TILESET_URL);
       const tileTextures = [
-        new PIXI.Texture({source: tilesetTexture.source, frame: new PIXI.Rectangle(16 * 5, 16 * 8, 16, 16)}), // Grass
-        new PIXI.Texture({source: tilesetTexture.source, frame: new PIXI.Rectangle(16 * 6, 16 * 8, 16, 16)}), // Flower
+        new PIXI.Texture({source: tilesetTexture.source, frame: new PIXI.Rectangle(16 * 1, 16 * 7, 16, 16)}), // Grass
+        new PIXI.Texture({source: tilesetTexture.source, frame: new PIXI.Rectangle(16 * 6, 16 * 2, 16, 16)}), // Flower
       ];
       
       // Draw map
