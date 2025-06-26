@@ -27,8 +27,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const handleUserDocument = useCallback(async (firebaseUser: User) => {
     const playerDocRef = doc(db, 'players', firebaseUser.uid);
     const playerDoc = await getDoc(playerDocRef);
-    const initialX = Math.floor(Math.random() * 500) + 50;
-    const initialY = Math.floor(Math.random() * 500) + 50;
+    const initialX = 0;
+    const initialY = 0;
 
 
     if (!playerDoc.exists()) {
@@ -48,11 +48,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await setDoc(playerDocRef, newPlayer);
       setPlayer(newPlayer);
     } else {
+      // For existing users, also reset their position to the center on login
+      // to ensure they are visible.
       await updateDoc(playerDocRef, {
         isOnline: true,
         lastActive: serverTimestamp(),
+        x: initialX,
+        y: initialY,
       });
-      setPlayer({ ...playerDoc.data(), uid: playerDoc.id } as Player);
+      // Use the existing data but override x and y for the local state immediately
+      setPlayer({ ...playerDoc.data(), uid: playerDoc.id, x: initialX, y: initialY, isOnline: true } as Player);
     }
   }, []);
 
