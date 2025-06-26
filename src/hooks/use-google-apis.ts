@@ -6,6 +6,7 @@ const DISCOVERY_DOCS = [
   "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
   "https://www.googleapis.com/discovery/v1/apis/tasks/v1/rest"
 ];
+const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks.readonly';
 
 export function useGoogleApis(accessToken: string | null) {
   const [gapiReady, setGapiReady] = useState<GoogleApiStatus>('loading');
@@ -20,6 +21,7 @@ export function useGoogleApis(accessToken: string | null) {
           await gapi.client.init({
             apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
             discoveryDocs: DISCOVERY_DOCS,
+            scope: SCOPES,
           });
           gapi.client.setToken({ access_token: accessToken });
           setGapiReady('ready');
