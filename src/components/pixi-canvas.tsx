@@ -148,6 +148,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const delta = time.delta;
         const speed = 2.5 * delta;
         const playerSprite = playerSpritesRef.current[currentPlayer.uid];
+        const playerText = playerTextRef.current[currentPlayer.uid];
+
         if (playerSprite && world) {
           let newX = playerSprite.x;
           let newY = playerSprite.y;
@@ -158,13 +160,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           if (keysDown.current['d']) newX += speed;
 
           // Clamp position to map boundaries
-          newX = Math.max(0, Math.min(newX, MAP_WIDTH * TILE_SIZE - TILE_SIZE));
-          newY = Math.max(0, Math.min(newY, MAP_HEIGHT * TILE_SIZE - TILE_SIZE));
+          newX = Math.max(TILE_SIZE / 2, Math.min(newX, MAP_WIDTH * TILE_SIZE - TILE_SIZE / 2));
+          newY = Math.max(TILE_SIZE / 2, Math.min(newY, MAP_HEIGHT * TILE_SIZE - TILE_SIZE / 2));
           
           if(playerSprite.x !== newX || playerSprite.y !== newY) {
             playerSprite.x = newX;
             playerSprite.y = newY;
             updatePlayerPositionInDb(newX, newY);
+          }
+          
+          if (playerText) {
+            playerText.x = playerSprite.x;
+            playerText.y = playerSprite.y - TILE_SIZE;
           }
 
           // Center camera on player
@@ -190,12 +197,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     if (!appRef.current || !worldRef.current) return;
     const world = worldRef.current;
 
-    const currentPlayers = Object.keys(playerSpritesRef.current);
-    const newPlayers = onlinePlayers.map(p => p.uid);
+    const currentPlayersInScene = Object.keys(playerSpritesRef.current);
+    const onlinePlayerIds = onlinePlayers.map(p => p.uid);
 
-    // Remove offline players
-    currentPlayers.forEach(uid => {
-      if (!newPlayers.includes(uid)) {
+    // Remove offline players from scene
+    currentPlayersInScene.forEach(uid => {
+      if (!onlinePlayerIds.includes(uid)) {
         if (playerSpritesRef.current[uid]) {
             world.removeChild(playerSpritesRef.current[uid]);
             delete playerSpritesRef.current[uid];
@@ -210,20 +217,19 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     // Add/Update players
     onlinePlayers.forEach(async (player) => {
       if (playerSpritesRef.current[player.uid]) {
-        // Update existing sprite
+        // Update existing remote player's sprite
         const sprite = playerSpritesRef.current[player.uid];
         const text = playerTextRef.current[player.uid];
         if (player.uid !== currentPlayer.uid) { // Don't snap other players' positions, interpolate later
           sprite.x = player.x;
           sprite.y = player.y;
+          text.x = player.x;
+          text.y = player.y - TILE_SIZE;
         }
-        text.x = player.x;
-        text.y = player.y - TILE_SIZE;
       } else {
-        // Create new sprite
+        // Create new sprite for a player
         try {
           const playerTextureSource = await PIXI.Assets.load(player.avatarUrl);
-          // Assuming the sprite is the first frame in a spritesheet
           const frame = new PIXI.Rectangle(0, 0, TILE_SIZE, TILE_SIZE);
           const texture = new PIXI.Texture({ source: playerTextureSource.source, frame });
           
@@ -231,7 +237,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.anchor.set(0.5, 0.5);
           sprite.x = player.x;
           sprite.y = player.y;
-          // Players should be rendered above the map tiles.
           sprite.zIndex = 1;
           world.addChild(sprite);
           playerSpritesRef.current[player.uid] = sprite;
@@ -244,7 +249,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           }});
           text.anchor.set(0.5, 1);
           text.x = player.x;
-          text.y = player.y - TILE_SIZE / 2;
+          text.y = player.y - TILE_SIZE;
           text.zIndex = 2; // Text on top of player
           world.addChild(text);
           playerTextRef.current[player.uid] = text;
@@ -255,7 +260,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       }
     });
 
-    // Enable sorting of children by zIndex for layering
     world.sortableChildren = true;
 
   }, [onlinePlayers, currentPlayer]);
