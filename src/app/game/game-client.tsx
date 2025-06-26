@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -70,7 +71,7 @@ export default function GameClient() {
   return (
     <>
       <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
-        <main className="flex-1 flex flex-col relative">
+        <main className="flex-1 relative">
           <header className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/50 to-transparent">
             <h1 className="font-headline text-2xl text-primary font-bold tracking-wider">ServiAdventures</h1>
             <div className="flex items-center gap-4">
