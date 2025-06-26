@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { getAuth, onAuthStateChanged, signInWithRedirect, GoogleAuthProvider, signOut as firebaseSignOut, User, getIdTokenResult } from 'firebase/auth';
+import { onAuthStateChanged, signInWithRedirect, GoogleAuthProvider, signOut as firebaseSignOut, User, getRedirectResult } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const handleUserDocument = useCallback(async (firebaseUser: User, token: string | undefined) => {
+  const handleUserDocument = useCallback(async (firebaseUser: User) => {
     const playerDocRef = doc(db, 'players', firebaseUser.uid);
     const playerDoc = await getDoc(playerDocRef);
     const initialX = Math.floor(Math.random() * 500) + 50;
@@ -53,17 +53,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setPlayer(playerDoc.data() as Player);
     }
-    if (token) {
-        setAccessToken(token);
-    }
   }, []);
 
   useEffect(() => {
+    // This effect handles the result from the Google Sign-In redirect.
+    const checkRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          if (credential?.accessToken) {
+            setAccessToken(credential.accessToken);
+          }
+        }
+      } catch (error) {
+        console.error("Error getting redirect result", error);
+      }
+    };
+
+    checkRedirectResult();
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        const tokenResult = await getIdTokenResult(firebaseUser);
-        await handleUserDocument(firebaseUser, tokenResult.token);
+        await handleUserDocument(firebaseUser);
       } else {
         if (user) { // only update if a user was previously logged in
             const playerDocRef = doc(db, 'players', user.uid);
