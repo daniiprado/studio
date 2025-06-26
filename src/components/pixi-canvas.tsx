@@ -12,7 +12,6 @@ interface PixiCanvasProps {
   onlinePlayers: Player[];
 }
 
-// Extend the AnimatedSprite type to include a custom property for tracking animation
 type PlayerSprite = PIXI.AnimatedSprite & { currentAnimationName?: string; };
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
@@ -34,7 +33,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     if (!localPlayer) return;
     const playerDocRef = doc(db, 'players', localPlayer.uid);
     await updateDoc(playerDocRef, data);
-  }, 100), []);
+  }, 100), [currentPlayerRef]);
 
   useEffect(() => {
     if (!pixiContainer.current || appRef.current) return;
@@ -43,14 +42,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const onKeyDown = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = false; };
 
-    app.init({
-      width: pixiContainer.current!.clientWidth,
-      height: pixiContainer.current!.clientHeight,
-      backgroundColor: 0x1099bb,
-      resizeTo: pixiContainer.current!,
-      autoDensity: true,
-      resolution: window.devicePixelRatio || 1,
-    }).then(() => {
+    const initPixi = async () => {
+      await app.init({
+        backgroundColor: 0x1099bb,
+        resizeTo: window,
+        autoDensity: true,
+        resolution: window.devicePixelRatio || 1,
+      });
+
       appRef.current = app;
       if (!pixiContainer.current) return;
       pixiContainer.current.replaceChildren(app.view as HTMLCanvasElement);
@@ -73,11 +72,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
 
-        const speed = 2.5 * time.delta;
+        const speed = 2.5;
         let dx = 0;
         let dy = 0;
-        let newDirection = playerSprite.currentAnimationName?.split('_')[0] as Player['direction'] ?? 'front';
-        let newAnimationName = playerSprite.currentAnimationName || `${localPlayer.direction}_walk`;
         
         if (keysDown.current['w'] || keysDown.current['arrowup']) dy -= 1;
         if (keysDown.current['s'] || keysDown.current['arrowdown']) dy += 1;
@@ -85,28 +82,33 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
         
         const moved = dx !== 0 || dy !== 0;
+        let newAnimationName = playerSprite.currentAnimationName || `${localPlayer.direction}_walk`;
+        let newDirection = playerSprite.currentAnimationName?.split('_')[0] as Player['direction'] ?? 'front';
 
         if (moved) {
-          if (dy < 0) { newDirection = 'back'; newAnimationName = 'back_walk'; }
-          else if (dy > 0) { newDirection = 'front'; newAnimationName = 'front_walk'; }
-          else if (dx < 0) { newDirection = 'left'; newAnimationName = 'left_walk'; }
-          else if (dx > 0) { newDirection = 'right'; newAnimationName = 'right_walk'; }
+            if (dy < 0) { newDirection = 'back'; }
+            else if (dy > 0) { newDirection = 'front'; }
+            else if (dx < 0) { newDirection = 'left'; }
+            else if (dx > 0) { newDirection = 'right'; }
+            
+            newAnimationName = `${newDirection}_walk`;
+            
+            if (dx !== 0 && dy !== 0) {
+                const length = Math.sqrt(dx * dx + dy * dy);
+                dx /= length;
+                dy /= length;
+            }
 
-          // Prioritize vertical animations for diagonal movement
-          if (dy !== 0) newAnimationName = dy < 0 ? 'back_walk' : 'front_walk';
-
-          const length = Math.sqrt(dx * dx + dy * dy);
-          playerSprite.x += (dx / length) * speed;
-          playerSprite.y += (dy / length) * speed;
+            playerSprite.x += dx * speed * time.delta;
+            playerSprite.y += dy * speed * time.delta;
           
-          if (playerSprite.currentAnimationName !== newAnimationName) {
-            playerSprite.textures = sheet.animations[newAnimationName];
-            playerSprite.currentAnimationName = newAnimationName;
-            playerSprite.play();
-          }
+            if (playerSprite.currentAnimationName !== newAnimationName) {
+                playerSprite.textures = sheet.animations[newAnimationName];
+                playerSprite.currentAnimationName = newAnimationName;
+            }
           
-          if (!playerSprite.playing) playerSprite.play();
-          updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+            if (!playerSprite.playing) playerSprite.play();
+            updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
         } else {
           if (playerSprite.playing) playerSprite.gotoAndStop(0);
         }
@@ -114,7 +116,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const playerText = playerTextRef.current[localPlayer.uid];
         if (playerText) {
           playerText.x = playerSprite.x;
-          playerText.y = playerSprite.y - playerSprite.height / 2 - 4;
+          playerText.y = playerSprite.y - playerSprite.height - 4;
         }
 
         if (worldRef.current) {
@@ -124,7 +126,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           worldRef.current.position.y = app.screen.height / 2;
         }
       });
-    });
+    };
+    
+    initPixi();
 
     return () => {
       window.removeEventListener('keydown', onKeyDown);
@@ -144,7 +148,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       const characterIds = new Set(onlinePlayers.map(p => p.characterId));
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
-          loadedSheetsRef.current[id] = await PIXI.Assets.load(CHARACTERS_MAP[id].json);
+            const character = CHARACTERS_MAP[id];
+            // Manually create the spritesheet from the imported assets
+            const sheet = new PIXI.Spritesheet(
+                PIXI.BaseTexture.from(character.png.src),
+                character.json
+            );
+            await sheet.parse();
+            loadedSheetsRef.current[id] = sheet;
         }
       }
 
@@ -171,11 +182,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           const sprite = playerSpritesRef.current[player.uid];
           const text = playerTextRef.current[player.uid];
 
-          if (sprite.label !== player.characterId) {
+          if (sprite.texture.label !== player.characterId) {
             world.removeChild(sprite, text);
             delete playerSpritesRef.current[player.uid];
             delete playerTextRef.current[player.uid];
           } else if (!isCurrentUser) {
+            // Smooth movement for other players can be added here later
             sprite.x = player.x;
             sprite.y = player.y;
             if (sprite.currentAnimationName !== animationName) {
@@ -184,21 +196,23 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
               sprite.gotoAndStop(0);
             }
             text.x = sprite.x;
-            text.y = sprite.y - sprite.height / 2 - 4;
+            text.y = sprite.y - sprite.height - 4;
             text.text = player.name || 'Player';
           }
         }
 
         if (!playerSpritesRef.current[player.uid]) {
           const sprite: PlayerSprite = new PIXI.AnimatedSprite(sheet.animations[animationName]);
-          sprite.label = player.characterId;
+          sprite.texture.label = player.characterId;
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
-          sprite.x = player.x;
-          sprite.y = player.y;
+          // Use the most up-to-date position for the current player
+          sprite.x = isCurrentUser ? currentPlayer.x : player.x;
+          sprite.y = isCurrentUser ? currentPlayer.y : player.y;
           sprite.zIndex = 1;
-          sprite.gotoAndStop(0);
+          sprite.play();
+          
           world.addChild(sprite);
           playerSpritesRef.current[player.uid] = sprite;
 
@@ -214,7 +228,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           });
           text.anchor.set(0.5, 1);
           text.x = sprite.x;
-          text.y = sprite.y - sprite.height / 2 - 4;
+          text.y = sprite.y - sprite.height - 4;
           text.zIndex = 2;
           world.addChild(text);
           playerTextRef.current[player.uid] = text;
@@ -224,7 +238,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     
     loadAssetsAndPlayers();
     
-  }, [onlinePlayers, currentPlayer.uid, currentPlayer.characterId]);
+  }, [onlinePlayers, currentPlayer]);
 
   return <div ref={pixiContainer} className="w-full h-full" />;
 };
