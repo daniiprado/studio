@@ -1,4 +1,4 @@
-const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+const bucketName = "servi-firebaseai-concurso.appspot.com";
 const storageBaseUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/`;
 
 const avatarPath = 'assets%2F';
