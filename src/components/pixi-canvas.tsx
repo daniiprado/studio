@@ -1,11 +1,7 @@
 'use client';
 import { useRef, useEffect, useCallback } from 'react';
-import { Application } from 'pixi.js/app';
-import { Container } from 'pixi.js/scene';
-import { AnimatedSprite } from 'pixi.js/sprite-animated';
-import { Text } from 'pixi.js/text';
-import { Spritesheet } from 'pixi.js/assets';
-import { BaseTexture } from 'pixi.js/core';
+import { Application, Container, AnimatedSprite, Text, Assets } from 'pixi.js';
+import { Spritesheet } from 'pixi.js/spritesheet';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { db } from '@/lib/firebase';
@@ -38,7 +34,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     if (!localPlayer) return;
     const playerDocRef = doc(db, 'players', localPlayer.uid);
     await updateDoc(playerDocRef, data);
-  }, 100), []);
+  }, 100), [currentPlayerRef]);
 
   useEffect(() => {
     if (!pixiContainer.current || appRef.current) return;
@@ -50,7 +46,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const initPixi = async () => {
       await app.init({
         backgroundColor: 0x1099bb,
-        resizeTo: window,
+        resizeTo: pixiContainer.current || window,
         autoDensity: true,
         resolution: window.devicePixelRatio || 1,
       });
@@ -157,8 +153,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
+            const texture = await Assets.load(character.png.src);
             const sheet = new Spritesheet(
-                BaseTexture.from(character.png.src),
+                texture,
                 character.json
             );
             await sheet.parse();
@@ -189,7 +186,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           const sprite = playerSpritesRef.current[player.uid];
           const text = playerTextRef.current[player.uid];
 
-          if ((sprite.textures[0].baseTexture as any).uid !== (sheet.baseTexture as any).uid) {
+          const newBaseTexture = sheet.baseTexture;
+          const oldBaseTexture = (sprite.textures[0] as any)?.baseTexture;
+
+          if (oldBaseTexture && newBaseTexture.uid !== oldBaseTexture.uid) {
             world.removeChild(sprite, text);
             delete playerSpritesRef.current[player.uid];
             delete playerTextRef.current[player.uid];
