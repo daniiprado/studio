@@ -1,19 +1,21 @@
-const bucketName = "servi-firebaseai-concurso.appspot.com";
-const storageBaseUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/`;
-
-const avatarPath = 'assets%2F';
+import map from "@/assets/topDown_baseTiles.png"
+import spr_alex from "@/assets/spr_alex.png"
+import spr_anna from "@/assets/spr_anna.png"
+import spr_ardley from "@/assets/spr_ardley.png"
+import spr_colt from "@/assets/spr_colt.png"
+import spr_ester from "@/assets/spr_ester.png"
+import spr_tom from "@/assets/spr_tom.png" 
 
 export const AVATAR_SPRITES = [
-  'spr_alex.png',
-  'spr_anna.png',
-  'spr_ardley.png',
-  'spr_colt.png',
-  'spr_ester.png',
-  'spr_tom.png',
-].map(fileName => `${storageBaseUrl}${avatarPath}${fileName}?alt=media`);
+  spr_alex.src,
+  spr_anna.src,
+  spr_ardley.src,
+  spr_colt.src,
+  spr_ester.src,
+  spr_tom.src,
+];
 
-
-export const WORLD_TILESET_URL = `${storageBaseUrl}assets%2Ftiles%2Fworld%2FtopDown_baseTiles.png?alt=media`;
+export const WORLD_TILESET_URL = map.src;
 
 export const MAP_WIDTH = 50;
 export const MAP_HEIGHT = 50;
