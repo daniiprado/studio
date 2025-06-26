@@ -177,6 +177,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
             const sheet = loadedSheetsRef.current[player.characterId];
             if (!sheet) continue;
 
+            const isCurrentUser = player.uid === currentPlayer.uid;
+
             const animationName = player.direction === 'front' ? 'front_walk' :
                                   player.direction === 'back' ? 'back_walk' :
                                   player.direction === 'left' ? 'left_walk' : 'right_walk';
@@ -192,7 +194,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
                      delete playerTextRef.current[player.uid];
                      // will be recreated in the 'else' block
                 } else {
-                    if (player.uid !== currentPlayer.uid) { // Update remote players
+                    if (!isCurrentUser) { // Update remote players
                         const isMoving = sprite.x !== player.x || sprite.y !== player.y;
                         sprite.x = player.x;
                         sprite.y = player.y;
@@ -220,14 +222,21 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
                 sprite.currentAnimation = animationName;
                 sprite.animationSpeed = 0.15;
                 sprite.anchor.set(0.5, 0.5);
-                sprite.x = player.x;
-                sprite.y = player.y;
+                
+                // Use the most up-to-date coordinates for the current user
+                const initialX = isCurrentUser ? currentPlayer.x : player.x;
+                const initialY = isCurrentUser ? currentPlayer.y : player.y;
+                sprite.x = initialX;
+                sprite.y = initialY;
+                
                 sprite.zIndex = 1;
-                if(player.uid !== currentPlayer.uid) {
-                    sprite.gotoAndStop(0);
-                } else {
+
+                if (isCurrentUser) {
                     sprite.play();
+                } else {
+                    sprite.gotoAndStop(0);
                 }
+                
                 world.addChild(sprite);
                 playerSpritesRef.current[player.uid] = sprite;
 
@@ -239,8 +248,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
                     align: 'center',
                 }});
                 text.anchor.set(0.5, 1);
-                text.x = player.x;
-                text.y = player.y - sprite.height / 2 - 4;
+                text.x = initialX;
+                text.y = initialY - sprite.height / 2 - 4;
                 text.zIndex = 2; // Text on top of player
                 world.addChild(text);
                 playerTextRef.current[player.uid] = text;
