@@ -1,28 +1,4 @@
 import map from "@/assets/topDown_baseTiles.png"
-import spr_alex from "@/assets/spr_alex.png"
-import spr_anna from "@/assets/spr_anna.png"
-import spr_ardley from "@/assets/spr_ardley.png"
-import spr_colt from "@/assets/spr_colt.png"
-import spr_ester from "@/assets/spr_ester.png"
-import spr_tom from "@/assets/spr_tom.png" 
-
-export const AVATAR_SPRITES = [
-  spr_alex.src,
-  spr_anna.src,
-  spr_ardley.src,
-  spr_colt.src,
-  spr_ester.src,
-  spr_tom.src,
-];
-
-export const AVATAR_SPRITES_ALIAS = {
-  "spr_alex.png": spr_alex.src,
-  "spr_anna.png": spr_anna.src,
-  "spr_ardley.png": spr_ardley.src,
-  "spr_colt.png": spr_colt.src,
-  "spr_ester.png": spr_ester.src,
-  "spr_tom.png": spr_tom.src,
-};
 
 export const WORLD_TILESET_URL = map.src;
 

@@ -5,11 +5,12 @@ export interface Player {
   name: string | null;
   email: string | null;
   photoURL: string | null;
-  avatarUrl: string;
+  characterId: string;
   isOnline: boolean;
   lastActive: Timestamp;
   x: number;
   y: number;
+  direction: 'front' | 'back' | 'left' | 'right';
 }
 
 export type GoogleApiStatus = 'loading' | 'error' | 'ready';

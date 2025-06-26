@@ -5,7 +5,7 @@ import { onAuthStateChanged, signInWithRedirect, GoogleAuthProvider, signOut as 
 import { doc, getDoc, setDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
-import { AVATAR_SPRITES } from '@/lib/constants';
+import { CHARACTERS_LIST } from '@/lib/characters';
 
 interface AuthContextType {
   user: User | null;
@@ -32,17 +32,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 
     if (!playerDoc.exists()) {
-      const randomAvatarUrl = AVATAR_SPRITES[Math.floor(Math.random() * AVATAR_SPRITES.length)];
+      const randomCharacter = CHARACTERS_LIST[Math.floor(Math.random() * CHARACTERS_LIST.length)];
       const newPlayer: Player = {
         uid: firebaseUser.uid,
         name: firebaseUser.displayName,
         email: firebaseUser.email,
         photoURL: firebaseUser.photoURL,
-        avatarUrl: randomAvatarUrl,
+        characterId: randomCharacter.id,
         isOnline: true,
         lastActive: serverTimestamp() as any,
         x: initialX,
         y: initialY,
+        direction: 'front',
       };
       await setDoc(playerDocRef, newPlayer);
       setPlayer(newPlayer);
@@ -51,13 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isOnline: true,
         lastActive: serverTimestamp(),
       });
-      setPlayer(playerDoc.data() as Player);
+      setPlayer({ ...playerDoc.data(), uid: playerDoc.id } as Player);
     }
   }, []);
 
   useEffect(() => {
     // This effect handles the result from the Google Sign-In redirect.
     const checkRedirectResult = async () => {
+      setLoading(true);
       try {
         const result = await getRedirectResult(auth);
         if (result) {
@@ -65,18 +67,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (credential?.accessToken) {
             setAccessToken(credential.accessToken);
           }
+          const firebaseUser = result.user;
+          setUser(firebaseUser);
+          await handleUserDocument(firebaseUser);
         }
       } catch (error) {
         console.error("Error getting redirect result", error);
       }
+      setLoading(false);
     };
-
-    checkRedirectResult();
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        setUser(firebaseUser);
-        await handleUserDocument(firebaseUser);
+        if (!user) { // Prevent re-running if user is already set by redirect result
+            setUser(firebaseUser);
+            await handleUserDocument(firebaseUser);
+        }
       } else {
         if (user) { // only update if a user was previously logged in
             const playerDocRef = doc(db, 'players', user.uid);
@@ -88,6 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setLoading(false);
     });
+
+    checkRedirectResult();
 
     const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
         if (auth.currentUser) {
