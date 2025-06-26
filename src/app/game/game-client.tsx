@@ -6,7 +6,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Loader2, LogOut, MessageSquare, Mic, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import PixiCanvas from '@/components/pixi-canvas';
 import RightSidebar from '@/components/right-sidebar';
 import {
   DropdownMenu,
@@ -19,6 +18,16 @@ import {
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
+import dynamic from 'next/dynamic';
+
+const PixiCanvas = dynamic(() => import('@/components/pixi-canvas'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-background">
+      <Loader2 className="h-12 w-12 animate-spin text-accent" />
+    </div>
+  ),
+});
 
 
 export default function GameClient() {
