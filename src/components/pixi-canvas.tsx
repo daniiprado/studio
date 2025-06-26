@@ -2,7 +2,7 @@
 import { useRef, useEffect } from 'react';
 import * as PIXI from 'pixi.js';
 import { Player } from '@/lib/types';
-import { WORLD_TILESET_URL, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, TILE_DEFINITIONS } from '@/lib/constants';
+import { AVATAR_SPRITES_ALIAS, WORLD_TILESET_URL, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, TILE_DEFINITIONS } from '@/lib/constants';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { throttle } from 'lodash';
@@ -12,62 +12,18 @@ interface PixiCanvasProps {
   onlinePlayers: Player[];
 }
 
-// A more advanced procedural map generator
-const generateMap = () => {
-    const map: string[][] = Array.from({ length: MAP_HEIGHT }, () => Array(MAP_WIDTH).fill('grass1'));
-  
-    const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
-  
-    // Generate houses
-    const numHouses = randInt(5, 8);
-    for (let i = 0; i < numHouses; i++) {
-      const houseWidth = randInt(5, 8);
-      const houseHeight = randInt(4, 7);
-      // Ensure houses are not on the very edge of the map
-      const startX = randInt(1, MAP_WIDTH - houseWidth - 1);
-      const startY = randInt(1, MAP_HEIGHT - houseHeight - 1);
-  
-      const wallType = `wall${randInt(1, 3)}`;
-      const roofType = `roof${randInt(1, 3)}`;
-  
-      // Place walls and roof
-      for (let y = startY; y < startY + houseHeight; y++) {
-        for (let x = startX; x < startX + houseWidth; x++) {
-          // simple check to avoid overlapping houses for this example
-          if (map[y][x].startsWith('grass')) {
-             // A simple single-tile-high roof
-            map[y][x] = y === startY ? roofType : wallType;
-          }
-        }
-      }
-    }
-  
-    // Scatter trees
-    const numTrees = 70;
-    for (let i = 0; i < numTrees; i++) {
-        const x = randInt(0, MAP_WIDTH - 1);
-        const y = randInt(0, MAP_HEIGHT - 1);
-        
-        if (map[y][x].startsWith('grass')) {
-          const treeColor = ['green', 'brown', 'red'][randInt(0, 2)];
-          // Using just one tree type per color for simplicity of scattering
-          map[y][x] = `tree1_${treeColor}`; 
-        }
-    }
-    
-    // Scatter different grass types for visual variety
-    for (let y = 0; y < MAP_HEIGHT; y++) {
-        for (let x = 0; x < MAP_WIDTH; x++) {
-            if (map[y][x] === 'grass1' && Math.random() < 0.2) {
-                map[y][x] = `grass${randInt(2, 3)}`;
-            }
-        }
-    }
-  
-    return map;
-};
-
-const mapData = generateMap();
+const mapData = [
+    ["grass_green", "grass_green", "tree_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green"],
+    ["grass_green", "tree_yellow", "grass_green", "grass_green", "grass_green", "grass_green", "tree_orange", "grass_green", "tree_green", "grass_green"],
+    ["grass_green", "grass_green", "grass_green", "grass_green", "wall_wood", "wall_wood", "wall_wood", "grass_green", "grass_green", "grass_green"],
+    ["grass_green", "grass_green", "grass_green", "grass_green", "roof_red", "roof_red", "roof_red", "grass_green", "grass_green", "grass_green"],
+    ["grass_green", "tree_green", "grass_green", "grass_green", "roof_brown", "roof_brown", "roof_brown", "grass_green", "tree_yellow", "grass_green"],
+    ["grass_green", "grass_green", "grass_green", "grass_green", "roof_orange", "roof_orange", "roof_orange", "grass_green", "grass_green", "grass_green"],
+    ["grass_green", "tree_orange", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "tree_green", "grass_green", "grass_green"],
+    ["grass_green", "grass_green", "grass_green", "tree_yellow", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green"],
+    ["grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "tree_green", "grass_green", "grass_green", "grass_green", "grass_green"],
+    ["grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green"]
+];
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
@@ -121,7 +77,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           const tileId = mapData[y][x];
           
           // Always draw a base grass tile first, using the specified grass type if available
-          const grassId = tileId.startsWith('grass') ? tileId : 'grass1';
+          const grassId = tileId.startsWith('grass') ? tileId : 'grass_green';
           const baseTile = new PIXI.Sprite(tileTextures[grassId]);
           baseTile.x = x * TILE_SIZE;
           baseTile.y = y * TILE_SIZE;
@@ -229,7 +185,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       } else {
         // Create new sprite for a player
         try {
-          const playerTextureSource = await PIXI.Assets.load(player.avatarUrl);
+          const playerTextureSource = await PIXI.Assets.load(AVATAR_SPRITES_ALIAS['spr_alex.png']);
           const frame = new PIXI.Rectangle(0, 0, TILE_SIZE, TILE_SIZE);
           const texture = new PIXI.Texture({ source: playerTextureSource.source, frame });
           

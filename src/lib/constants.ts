@@ -15,41 +15,31 @@ export const AVATAR_SPRITES = [
   spr_tom.src,
 ];
 
+export const AVATAR_SPRITES_ALIAS = {
+  "spr_alex.png": spr_alex.src,
+  "spr_anna.png": spr_anna.src,
+  "spr_ardley.png": spr_ardley.src,
+  "spr_colt.png": spr_colt.src,
+  "spr_ester.png": spr_ester.src,
+  "spr_tom.png": spr_tom.src,
+};
+
 export const WORLD_TILESET_URL = map.src;
 
-export const MAP_WIDTH = 50;
-export const MAP_HEIGHT = 50;
+export const MAP_WIDTH = 10;
+export const MAP_HEIGHT = 10;
 export const TILE_SIZE = 16;
 
 // Coordinates are in tile units (not pixels)
 export const TILE_DEFINITIONS: Record<string, { x: number; y: number }> = {
-    // Grass/Cliffs
-    grass1: { x: 1, y: 7 }, // Light green grass
-    grass2: { x: 0, y: 7 }, // Darker green grass
-    grass3: { x: 2, y: 7 }, // Grass with some detail
-
-    // Walls
-    wall1: { x: 6, y: 11 }, // Grey stone wall
-    wall2: { x: 7, y: 11 }, // Brown wood wall
-    wall3: { x: 8, y: 11 }, // White plaster wall
-
-    // Roofs
-    roof1: { x: 13, y: 6 }, // Red shingles
-    roof2: { x: 14, y: 6 }, // Brown thatch
-    roof3: { x: 15, y: 6 }, // Grey slate
-
-    // Trees (Green)
-    tree1_green: { x: 11, y: 21 },
-    tree2_green: { x: 12, y: 21 },
-    tree3_green: { x: 13, y: 21 },
-    
-    // Trees (Brown/Autumn)
-    tree1_brown: { x: 11, y: 22 },
-    tree2_brown: { x: 12, y: 22 },
-    tree3_brown: { x: 13, y: 22 },
-    
-    // Trees (Red/Fantasy)
-    tree1_red: { x: 11, y: 23 },
-    tree2_red: { x: 12, y: 23 },
-    tree3_red: { x: 13, y: 23 },
+    grass_green: { x: 0, y: 1 },
+    grass_purple: { x: 1, y: 1 },
+    cliff_green: { x: 0, y: 2 },
+    tree_green: { x: 0, y: 6 },
+    tree_yellow: { x: 0, y: 7 },
+    tree_orange: { x: 0, y: 8 },
+    wall_wood: { x: 0, y: 10 },
+    roof_red: { x: 0, y: 11 },
+    roof_brown: { x: 1, y: 11 },
+    roof_orange: { x: 2, y: 11 },
 };
