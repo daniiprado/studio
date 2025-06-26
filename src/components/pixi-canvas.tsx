@@ -2,8 +2,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as PIXI from 'pixi.js';
 import { Player } from '@/lib/types';
-import { WORLD_TILESET_URL, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, TILE_DEFINITIONS } from '@/lib/constants';
-import { CHARACTERS_MAP, Character } from '@/lib/characters';
+import { CHARACTERS_MAP } from '@/lib/characters';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { throttle } from 'lodash';
@@ -12,20 +11,6 @@ interface PixiCanvasProps {
   currentPlayer: Player;
   onlinePlayers: Player[];
 }
-
-const mapData = [
-    ["grass_green", "grass_green", "tree_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green"],
-    ["grass_green", "tree_yellow", "grass_green", "grass_green", "grass_green", "grass_green", "tree_orange", "grass_green", "tree_green", "grass_green"],
-    ["grass_green", "grass_green", "grass_green", "grass_green", "wall_wood", "wall_wood", "wall_wood", "grass_green", "grass_green", "grass_green"],
-    ["grass_green", "grass_green", "grass_green", "grass_green", "roof_red", "roof_red", "roof_red", "grass_green", "grass_green", "grass_green"],
-    ["grass_green", "tree_green", "grass_green", "grass_green", "roof_brown", "roof_brown", "roof_brown", "grass_green", "tree_yellow", "grass_green"],
-    ["grass_green", "grass_green", "grass_green", "grass_green", "roof_orange", "roof_orange", "roof_orange", "grass_green", "grass_green", "grass_green"],
-    ["grass_green", "tree_orange", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "tree_green", "grass_green", "grass_green"],
-    ["grass_green", "grass_green", "grass_green", "tree_yellow", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green"],
-    ["grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "tree_green", "grass_green", "grass_green", "grass_green", "grass_green"],
-    ["grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green", "grass_green"]
-];
-
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
@@ -47,7 +32,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     await app.init({
       width: pixiContainer.current!.clientWidth,
       height: pixiContainer.current!.clientHeight,
-      backgroundColor: 0x222222,
+      backgroundColor: 0x1099bb,
       resizeTo: pixiContainer.current!,
       autoDensity: true,
       resolution: window.devicePixelRatio || 1,
@@ -58,36 +43,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const world = new PIXI.Container();
     worldRef.current = world;
     app.stage.addChild(world);
-
-    // Load assets
-    const tilesetTexture = await PIXI.Assets.load(WORLD_TILESET_URL);
-    
-    const tileTextures: Record<string, PIXI.Texture> = {};
-    for (const [key, def] of Object.entries(TILE_DEFINITIONS)) {
-      tileTextures[key] = new PIXI.Texture({
-        source: tilesetTexture.source,
-        frame: new PIXI.Rectangle(def.x * TILE_SIZE, def.y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-      });
-    }
-    
-    // Draw map
-    for (let y = 0; y < MAP_HEIGHT; y++) {
-      for (let x = 0; x < MAP_WIDTH; x++) {
-        const tileId = mapData[y][x];
-        const grassId = 'grass_green';
-        const baseTile = new PIXI.Sprite(tileTextures[grassId]);
-        baseTile.x = x * TILE_SIZE;
-        baseTile.y = y * TILE_SIZE;
-        world.addChild(baseTile);
-        
-        if (!tileId.startsWith('grass') && tileTextures[tileId]) {
-          const featureTile = new PIXI.Sprite(tileTextures[tileId]);
-          featureTile.x = x * TILE_SIZE;
-          featureTile.y = y * TILE_SIZE;
-          world.addChild(featureTile);
-        }
-      }
-    }
     
     // Keyboard listeners
     const onKeyDown = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = true; };
@@ -119,11 +74,15 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
         if (dx !== 0 || dy !== 0) {
             moved = true;
-            const angle = Math.atan2(dy, dx);
-            if (angle >= -Math.PI * 0.75 && angle < -Math.PI * 0.25) { newDirection = 'front'; newAnimation = 'back_walk'; }
-            else if (angle >= -Math.PI * 0.25 && angle < Math.PI * 0.25) { newDirection = 'right'; newAnimation = 'right_walk'; }
-            else if (angle >= Math.PI * 0.25 && angle < Math.PI * 0.75) { newDirection = 'back'; newAnimation = 'front_walk'; }
-            else { newDirection = 'left'; newAnimation = 'left_walk'; }
+            
+            if (dy < 0) { newDirection = 'back'; newAnimation = 'back_walk'; }
+            else if (dy > 0) { newDirection = 'front'; newAnimation = 'front_walk'; }
+            else if (dx < 0) { newDirection = 'left'; newAnimation = 'left_walk'; }
+            else if (dx > 0) { newDirection = 'right'; newAnimation = 'right_walk'; }
+            
+            // Prioritize vertical animations during diagonal movement
+            if (dy < 0) { newAnimation = 'back_walk'; }
+            if (dy > 0) { newAnimation = 'front_walk'; }
 
             // Diagonal movement normalization
             const length = Math.sqrt(dx * dx + dy * dy);
@@ -131,7 +90,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
             playerSprite.y += (dy / length) * speed;
         }
 
-        if (newAnimation !== currentAnimation) {
+        if (newAnimation !== currentAnimation && loadedSheetsRef.current[currentPlayer.characterId]) {
           playerSprite.textures = loadedSheetsRef.current[currentPlayer.characterId].animations[newAnimation];
           currentAnimation = newAnimation;
         }
@@ -175,8 +134,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
     return () => {
       cleanupTicker?.();
-      appRef.current?.destroy(true, { children: true, texture: true, baseTexture: true });
-      appRef.current = null;
+      if (appRef.current) {
+        appRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
+        appRef.current = null;
+      }
     };
   }, [initPixi]);
 
