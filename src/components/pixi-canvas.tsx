@@ -210,8 +210,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
         if (!playerSprite || playerSprite.destroyed) return;
         
+        // This is a robust check to prevent NaN errors from corrupting the state.
         if (isNaN(playerSprite.x)) playerSprite.x = localPlayer.x ?? 0;
         if (isNaN(playerSprite.y)) playerSprite.y = localPlayer.y ?? 0;
+        // Final fallback if localPlayer data is also somehow corrupted
+        if (isNaN(playerSprite.x)) playerSprite.x = 0;
+        if (isNaN(playerSprite.y)) playerSprite.y = 0;
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
@@ -230,7 +234,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
         let newX = playerSprite.x + dx * speed * time.deltaTime;
         let newY = playerSprite.y + dy * speed * time.deltaTime;
-
+        
+        // Final validation before assignment.
         if (isNaN(newX)) newX = playerSprite.x;
         if (isNaN(newY)) newY = playerSprite.y;
 
@@ -329,6 +334,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
+            // Use modern Assets loader to cache texture, then manually create spritesheet
             const baseTexture = await Assets.load<Texture>(character.png.src);
             const sheet = new Spritesheet(baseTexture, character.json);
             await sheet.parse();
@@ -423,7 +429,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     
     loadAssetsAndPlayers();
     
-  }, [onlinePlayers, currentPlayer, gameState]);
+  }, [onlinePlayers, currentPlayer, gameState, updatePlayerInDb]);
 
   return <div ref={pixiContainer} className="w-full h-full" />;
 };
