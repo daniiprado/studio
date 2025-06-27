@@ -21,7 +21,6 @@ const TILE_SIZE = 32;
 const MAP_WIDTH_TILES = 40;
 const MAP_HEIGHT_TILES = 30;
 
-// Using a simplified map layout for brevity
 // prettier-ignore
 const mapLayout = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -145,9 +144,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
       const world = new Container();
       world.sortableChildren = true;
-      world.visible = false; 
       worldRef.current = world;
-      app.stage.addChild(world);
       
       const mapContainer = new Container();
       mapContainer.zIndex = 0;
@@ -187,8 +184,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
       const onEnterClick = () => {
         setGameState('playing');
-        lobbyContainer.visible = false;
-        if(worldRef.current) worldRef.current.visible = true;
+        app.stage.removeChild(lobbyContainer);
+        if (worldRef.current) {
+          app.stage.addChild(worldRef.current);
+        }
       };
       
       enterButton.on('pointertap', onEnterClick);
@@ -231,21 +230,17 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const oldX = playerSprite.x;
         const oldY = playerSprite.y;
 
-        if (dx !== 0 || dy !== 0) {
-          const moveX = dx * speed * time.deltaTime;
-          const moveY = dy * speed * time.deltaTime;
-      
-          playerSprite.x += moveX;
-          if (checkCollision(playerSprite.x, playerSprite.y, playerSprite.width, playerSprite.height)) {
-            playerSprite.x -= moveX; // Revert X move
-          }
-      
-          playerSprite.y += moveY;
-          if (checkCollision(playerSprite.x, playerSprite.y, playerSprite.width, playerSprite.height)) {
-            playerSprite.y -= moveY; // Revert Y move
-          }
+        let newX = playerSprite.x + dx * speed * time.deltaTime;
+        let newY = playerSprite.y + dy * speed * time.deltaTime;
+
+        if (!checkCollision(newX, playerSprite.y, playerSprite.width, playerSprite.height)) {
+          playerSprite.x = newX;
         }
-        
+
+        if (!checkCollision(playerSprite.x, newY, playerSprite.width, playerSprite.height)) {
+          playerSprite.y = newY;
+        }
+
         const moved = playerSprite.x !== oldX || playerSprite.y !== oldY;
         let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as Player['direction'] || 'front';
 
