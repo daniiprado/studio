@@ -89,6 +89,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         let animationShouldPlay = moved;
         
         if (moved) {
+            // Defensive check to prevent NaN coordinates
+            if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
+                playerSprite.x = localPlayer.x ?? 0;
+            }
+            if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
+                playerSprite.y = localPlayer.y ?? 0;
+            }
+            
             if (dy < 0) { newDirection = 'back'; }
             else if (dy > 0) { newDirection = 'front'; }
             else if (dx < 0) { newDirection = 'left'; }
@@ -270,3 +278,5 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 };
 
 export default PixiCanvas;
+
+    
