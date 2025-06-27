@@ -138,6 +138,17 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         let dx = 0;
         let dy = 0;
         
+        // Definitive Fix: Before any calculation, ensure sprite coordinates are valid.
+        // This self-heals from any potential NaN state from the DB or race conditions.
+        if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
+            const safeX = typeof localPlayer.x === 'number' && !isNaN(localPlayer.x) ? localPlayer.x : 0;
+            playerSprite.x = safeX;
+        }
+        if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
+            const safeY = typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : 0;
+            playerSprite.y = safeY;
+        }
+        
         if (keysDown.current['w'] || keysDown.current['arrowup']) dy -= 1;
         if (keysDown.current['s'] || keysDown.current['arrowdown']) dy += 1;
         if (keysDown.current['a'] || keysDown.current['arrowleft']) dx -= 1;
@@ -145,15 +156,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         
         let moved = dx !== 0 || dy !== 0;
 
-        // Definitive Fix: Before any calculation, ensure sprite coordinates are valid.
-        // This runs every frame to self-heal from any potential NaN state.
-        if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
-            playerSprite.x = localPlayer.x ?? 0;
-        }
-        if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
-            playerSprite.y = localPlayer.y ?? 0;
-        }
-        
         if (moved) {
             let newDirection: Player['direction'] = localPlayer.direction;
             if (dy < 0) { newDirection = 'back'; }
