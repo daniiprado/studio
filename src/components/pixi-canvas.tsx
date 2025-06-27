@@ -84,17 +84,17 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
         
         let moved = dx !== 0 || dy !== 0;
+
+        // Definitive Fix: Before any calculation, ensure sprite coordinates are valid.
+        // This runs every frame to self-heal from any potential NaN state.
+        if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
+            playerSprite.x = localPlayer.x ?? 0;
+        }
+        if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
+            playerSprite.y = localPlayer.y ?? 0;
+        }
         
         if (moved) {
-            // Definitive Fix: Before any calculation, ensure sprite coordinates are valid.
-            // If they are not (e.g., NaN), reset them to the last known good state from React.
-            if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
-                playerSprite.x = localPlayer.x ?? 0;
-            }
-            if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
-                playerSprite.y = localPlayer.y ?? 0;
-            }
-
             let newDirection: Player['direction'] = localPlayer.direction;
             if (dy < 0) { newDirection = 'back'; }
             else if (dy > 0) { newDirection = 'front'; }
