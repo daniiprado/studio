@@ -127,7 +127,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           playerText.y = playerSprite.y - playerSprite.height / 2 - 10;
         }
 
-        if (worldRef.current) {
+        if (worldRef.current && worldRef.current.pivot) {
           worldRef.current.pivot.x = playerSprite.x;
           worldRef.current.pivot.y = playerSprite.y;
           worldRef.current.position.set(app.screen.width / 2, app.screen.height / 2);
