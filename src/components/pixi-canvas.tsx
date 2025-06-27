@@ -212,12 +212,15 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         
         if (!playerSprite || playerSprite.destroyed) return;
         
-        if (isNaN(playerSprite.x)) playerSprite.x = localPlayer.x ?? 0;
-        if (isNaN(playerSprite.y)) playerSprite.y = localPlayer.y ?? 0;
+        // Self-healing mechanism for invalid coordinates
+        if (isNaN(playerSprite.x) || isNaN(playerSprite.y)) {
+            playerSprite.x = localPlayer.x ?? 0;
+            playerSprite.y = localPlayer.y ?? 0;
+            // If still NaN, reset to a safe default
+            if (isNaN(playerSprite.x)) playerSprite.x = 0;
+            if (isNaN(playerSprite.y)) playerSprite.y = 0;
+        }
 
-        if (isNaN(playerSprite.x)) playerSprite.x = 0;
-        if (isNaN(playerSprite.y)) playerSprite.y = 0;
-        
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
         
@@ -232,7 +235,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
         const oldX = playerSprite.x;
         const oldY = playerSprite.y;
-
+        
+        // Use time.deltaTime for frame-rate independent movement
         let newX = playerSprite.x + dx * speed * time.deltaTime;
         let newY = playerSprite.y + dy * speed * time.deltaTime;
         
@@ -253,6 +257,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           else if (dx < 0) { newDirection = 'left'; }
           else if (dx > 0) { newDirection = 'right'; }
             
+          // Final validation before sending to DB
           if (!isNaN(playerSprite.x) && !isNaN(playerSprite.y)) {
             updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
           }
@@ -431,5 +436,3 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 };
 
 export default PixiCanvas;
-
-    
