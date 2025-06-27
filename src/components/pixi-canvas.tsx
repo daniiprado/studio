@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet } from 'pixi.js';
+import { useRef, useEffect, useCallback, useState } from 'react';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
@@ -24,11 +24,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const playerTextRef = useRef<Record<string, Text>>({});
   const loadedSheetsRef = useRef<Record<string, Spritesheet>>({});
   const keysDown = useRef<Record<string, boolean>>({});
+  const [gameState, setGameState] = useState<'lobby' | 'playing'>('lobby');
   
   const currentPlayerRef = useRef(currentPlayer);
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
   }, [currentPlayer]);
+
+  // Use a ref for gameState to access it in the ticker without re-triggering effects
+  const gameStateRef = useRef(gameState);
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
   const updatePlayerInDb = useCallback(throttle(async (data: Partial<Player>) => {
     const localPlayer = currentPlayerRef.current;
@@ -58,13 +65,66 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
       const world = new Container();
       world.sortableChildren = true;
+      world.visible = false; // Start with the world invisible
       worldRef.current = world;
       app.stage.addChild(world);
+
+      // --- LOBBY SCREEN ---
+      const lobbyContainer = new Container();
+      app.stage.addChild(lobbyContainer);
+
+      const buttonGraphic = new Graphics();
+      buttonGraphic.roundRect(0, 0, 220, 70, 15).fill({ color: 0x000000, alpha: 0.6 });
+      buttonGraphic.stroke({ width: 3, color: 0xffffff });
+
+      const buttonText = new Text({
+        text: 'ENTRAR',
+        style: {
+          fill: 0xffffff,
+          fontSize: 28,
+          fontFamily: 'Space Grotesk, sans-serif',
+          fontWeight: 'bold',
+        }
+      });
+      buttonText.anchor.set(0.5);
+      buttonText.position.set(buttonGraphic.width / 2, buttonGraphic.height / 2);
+      
+      const enterButton = new Container();
+      enterButton.addChild(buttonGraphic, buttonText);
+      enterButton.position.set(
+        app.screen.width / 2 - buttonGraphic.width / 2,
+        app.screen.height / 2 - buttonGraphic.height / 2
+      );
+      enterButton.eventMode = 'static';
+      enterButton.cursor = 'pointer';
+
+      const onEnterClick = () => {
+        setGameState('playing');
+        lobbyContainer.visible = false;
+      };
+      
+      enterButton.on('pointertap', onEnterClick);
+      lobbyContainer.addChild(enterButton);
+      
+      const resizeHandler = () => {
+        if (lobbyContainer.visible) {
+            enterButton.position.set(
+                app.screen.width / 2 - enterButton.width / 2,
+                app.screen.height / 2 - enterButton.height / 2
+            );
+        }
+      };
+      app.renderer.on('resize', resizeHandler);
+      // --- END LOBBY SCREEN ---
+
 
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
 
       app.ticker.add((time) => {
+        if (gameStateRef.current !== 'playing') {
+          return;
+        }
         const localPlayer = currentPlayerRef.current;
         if (!localPlayer) return;
 
@@ -159,6 +219,20 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     if (!appRef.current || !worldRef.current) return;
     const world = worldRef.current;
 
+    // --- Game State Logic ---
+    if (gameState !== 'playing') {
+      world.visible = false;
+      // Clear existing players if we go back to lobby
+      Object.values(playerSpritesRef.current).forEach(s => s.destroy());
+      Object.values(playerTextRef.current).forEach(t => t.destroy());
+      playerSpritesRef.current = {};
+      playerTextRef.current = {};
+      return;
+    }
+    world.visible = true;
+    // --- End Game State Logic ---
+
+
     const loadAssetsAndPlayers = async () => {
       const playersToRender = new Map<string, Player>();
       if (currentPlayer) {
@@ -212,6 +286,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
              delete playerSpritesRef.current[player.uid];
              delete playerTextRef.current[player.uid];
           } else {
+            // Always update position for all sprites
             sprite.x = player.x ?? 0;
             sprite.y = player.y ?? 0;
 
@@ -265,7 +340,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     
     loadAssetsAndPlayers();
     
-  }, [onlinePlayers, currentPlayer]);
+  }, [onlinePlayers, currentPlayer, gameState]);
 
   return <div ref={pixiContainer} className="w-full h-full" />;
 };
