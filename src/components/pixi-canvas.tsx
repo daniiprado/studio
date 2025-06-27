@@ -199,14 +199,21 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
              world.removeChild(sprite, text);
              delete playerSpritesRef.current[player.uid];
              delete playerTextRef.current[player.uid];
-          } else if (!isCurrentUser) {
+          } else {
+            // Always update position for all players from the authoritative source (props)
             sprite.x = player.x;
             sprite.y = player.y;
-            if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
-              sprite.textures = sheet.animations[animationName];
-              sprite.currentAnimationName = animationName;
-              sprite.gotoAndStop(0);
+
+            // For remote players, update their animation based on DB data.
+            // For the local player, the ticker handles animation changes based on input.
+            if (!isCurrentUser) {
+              if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
+                sprite.textures = sheet.animations[animationName];
+                sprite.currentAnimationName = animationName;
+                sprite.gotoAndStop(0);
+              }
             }
+
             text.x = sprite.x;
             text.y = sprite.y - sprite.height / 2 - 10;
             text.text = player.name || 'Player';
