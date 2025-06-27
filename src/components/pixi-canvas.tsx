@@ -101,6 +101,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       const onEnterClick = () => {
         setGameState('playing');
         lobbyContainer.visible = false;
+        if(worldRef.current) worldRef.current.visible = true;
       };
       
       enterButton.on('pointertap', onEnterClick);
@@ -134,36 +135,32 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
 
-        const speed = 2.5;
-        let dx = 0;
-        let dy = 0;
-        
         // Definitive Fix: Before any calculation, ensure sprite coordinates are valid.
         // This self-heals from any potential NaN state from the DB or race conditions.
         if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
-            const safeX = typeof localPlayer.x === 'number' && !isNaN(localPlayer.x) ? localPlayer.x : 0;
-            playerSprite.x = safeX;
+            playerSprite.x = typeof localPlayer.x === 'number' && !isNaN(localPlayer.x) ? localPlayer.x : 0;
         }
         if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
-            const safeY = typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : 0;
-            playerSprite.y = safeY;
+            playerSprite.y = typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : 0;
         }
         
+        const speed = 2.5;
+        let dx = 0;
+        let dy = 0;
+
         if (keysDown.current['w'] || keysDown.current['arrowup']) dy -= 1;
         if (keysDown.current['s'] || keysDown.current['arrowdown']) dy += 1;
         if (keysDown.current['a'] || keysDown.current['arrowleft']) dx -= 1;
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
         
-        let moved = dx !== 0 || dy !== 0;
+        const moved = dx !== 0 || dy !== 0;
+        let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as Player['direction'] || 'front';
 
         if (moved) {
-            let newDirection: Player['direction'] = localPlayer.direction;
             if (dy < 0) { newDirection = 'back'; }
             else if (dy > 0) { newDirection = 'front'; }
             else if (dx < 0) { newDirection = 'left'; }
             else if (dx > 0) { newDirection = 'right'; }
-            
-            const newAnimationName = `${newDirection}_walk`;
             
             if (dx !== 0 && dy !== 0) {
                 const length = Math.sqrt(dx * dx + dy * dy);
@@ -174,26 +171,27 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
             playerSprite.x += dx * speed * time.delta;
             playerSprite.y += dy * speed * time.delta;
           
-            if (playerSprite.currentAnimationName !== newAnimationName) {
-                if(sheet.animations[newAnimationName]) {
-                    playerSprite.textures = sheet.animations[newAnimationName];
-                    playerSprite.currentAnimationName = newAnimationName;
-                }
-            }
             updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
         }
         
-        const animationShouldPlay = moved;
-        if (animationShouldPlay && !playerSprite.playing) {
+        const newAnimationName = `${newDirection}_walk`;
+        if (playerSprite.currentAnimationName !== newAnimationName) {
+            if(sheet.animations[newAnimationName]) {
+                playerSprite.textures = sheet.animations[newAnimationName];
+                playerSprite.currentAnimationName = newAnimationName;
+            }
+        }
+        
+        if (moved && !playerSprite.playing) {
             playerSprite.play();
-        } else if (!animationShouldPlay && playerSprite.playing) {
-            playerSprite.stop();
+        } else if (!moved && playerSprite.playing) {
+            playerSprite.gotoAndStop(0);
         }
 
         const playerText = playerTextRef.current[localPlayer.uid];
         if (playerText) {
           playerText.x = playerSprite.x;
-          playerText.y = playerSprite.y - playerSprite.height / 2 - 10;
+          playerText.y = playerSprite.y - playerSprite.height - 5;
         }
 
         if (worldRef.current && worldRef.current.pivot) {
@@ -220,39 +218,27 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     if (!appRef.current || !worldRef.current) return;
     const world = worldRef.current;
 
-    // --- Game State Logic ---
     if (gameState !== 'playing') {
-      world.visible = false;
-      // Clear existing players if we go back to lobby
-      Object.values(playerSpritesRef.current).forEach(s => s.destroy());
-      Object.values(playerTextRef.current).forEach(t => t.destroy());
-      playerSpritesRef.current = {};
-      playerTextRef.current = {};
       return;
     }
-    world.visible = true;
-    // --- End Game State Logic ---
-
 
     const loadAssetsAndPlayers = async () => {
       const playersToRender = new Map<string, Player>();
-      if (currentPlayer) {
-        playersToRender.set(currentPlayer.uid, currentPlayer);
-      }
+      playersToRender.set(currentPlayer.uid, currentPlayer);
+
       onlinePlayers.forEach(p => {
-        if (currentPlayer && p.uid === currentPlayer.uid) return;
-        playersToRender.set(p.uid, p)
+        if (p.uid !== currentPlayer.uid) {
+            playersToRender.set(p.uid, p)
+        }
       });
       
       const allPlayers = Array.from(playersToRender.values());
-      
       const allPlayerIds = allPlayers.map(p => p.uid);
       const characterIds = new Set(allPlayers.map(p => p.characterId).filter(Boolean));
 
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
-            // Use Assets.load to get the texture, then get its baseTexture for the Spritesheet
             const texture = await Assets.load(character.png.src);
             const sheet = new Spritesheet(
                 texture.baseTexture,
@@ -266,10 +252,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       const currentPlayersInScene = Object.keys(playerSpritesRef.current);
       currentPlayersInScene.forEach(uid => {
         if (!allPlayerIds.includes(uid)) {
-          if (playerSpritesRef.current[uid]) world.removeChild(playerSpritesRef.current[uid]);
-          if (playerTextRef.current[uid]) world.removeChild(playerTextRef.current[uid]);
-          delete playerSpritesRef.current[uid];
-          delete playerTextRef.current[uid];
+          if (playerSpritesRef.current[uid]) {
+              playerSpritesRef.current[uid].destroy();
+              delete playerSpritesRef.current[uid];
+          }
+          if (playerTextRef.current[uid]) {
+              playerTextRef.current[uid].destroy();
+              delete playerTextRef.current[uid];
+          }
         }
       });
 
@@ -278,33 +268,33 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const sheet = loadedSheetsRef.current[player.characterId];
         if (!sheet) continue;
 
-        const isCurrentUser = currentPlayer && player.uid === currentPlayer.uid;
+        const isCurrentUser = player.uid === currentPlayer.uid;
         const animationName = `${player.direction || 'front'}_walk`;
 
         if (playerSpritesRef.current[player.uid]) {
           const sprite = playerSpritesRef.current[player.uid];
           const text = playerTextRef.current[player.uid];
           
-          if(sprite.textures[0].baseTexture !== sheet.baseTexture){
-             world.removeChild(sprite, text);
+          if(sprite.textures[0].baseTexture.uid !== sheet.baseTexture.uid){
+             sprite.destroy();
+             text.destroy();
              delete playerSpritesRef.current[player.uid];
              delete playerTextRef.current[player.uid];
           } else {
-            // Always update position for all sprites, ensuring no NaN values.
-            sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 0;
-            sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 0;
-
-            if (!isCurrentUser) {
-              if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
-                sprite.textures = sheet.animations[animationName];
-                sprite.currentAnimationName = animationName;
-                sprite.gotoAndStop(0);
-              }
-            }
-
-            text.x = sprite.x;
-            text.y = sprite.y - sprite.height / 2 - 10;
-            text.text = player.name || 'Player';
+             // Only update position for remote players from DB
+             if (!isCurrentUser) {
+                sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : sprite.x;
+                sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : sprite.y;
+                
+                if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
+                    sprite.textures = sheet.animations[animationName];
+                    sprite.currentAnimationName = animationName;
+                    sprite.gotoAndStop(0);
+                }
+             }
+             text.x = sprite.x;
+             text.y = sprite.y - sprite.height - 5;
+             text.text = player.name || 'Player';
           }
         }
 
@@ -315,10 +305,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
-          // Ensure no NaN values on creation.
           sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 0;
           sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 0;
           sprite.zIndex = 1;
+          sprite.gotoAndStop(0);
           
           world.addChild(sprite);
           playerSpritesRef.current[player.uid] = sprite;
@@ -335,7 +325,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           });
           text.anchor.set(0.5, 1);
           text.x = sprite.x;
-          text.y = sprite.y - sprite.height / 2 - 10;
+          text.y = sprite.y - sprite.height - 5;
           text.zIndex = 2;
           world.addChild(text);
           playerTextRef.current[player.uid] = text;
