@@ -2,7 +2,7 @@
 'use client';
 
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics } from 'pixi.js';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Texture } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
@@ -40,19 +40,13 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
 
-    // This is the final safeguard. We absolutely will not send NaN to the database.
-    const sanitizedData = { ...data };
-    if (sanitizedData.x !== undefined && (typeof sanitizedData.x !== 'number' || isNaN(sanitizedData.x))) {
-      console.error(`Invalid 'x' coordinate detected (${sanitizedData.x}). Aborting database update.`);
-      return;
-    }
-     if (sanitizedData.y !== undefined && (typeof sanitizedData.y !== 'number' || isNaN(sanitizedData.y))) {
-      console.error(`Invalid 'y' coordinate detected (${sanitizedData.y}). Aborting database update.`);
-      return;
+    if ( (data.x !== undefined && isNaN(data.x)) || (data.y !== undefined && isNaN(data.y)) ) {
+      // This block should not be reached anymore with the new checks in the ticker.
+      return; 
     }
 
     const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
-    await update(playerRef, sanitizedData);
+    await update(playerRef, data);
   }, 100), []);
 
   useEffect(() => {
@@ -131,28 +125,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       window.addEventListener('keyup', onKeyUp);
 
       app.ticker.add((time) => {
-        if (gameStateRef.current !== 'playing') {
-          return;
-        }
+        if (gameStateRef.current !== 'playing') return;
+        
         const localPlayer = currentPlayerRef.current;
         if (!localPlayer) return;
 
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
-        // CRITICAL FIX: A race condition can occur where this ticker runs after
-        // a sprite has been destroyed by a React effect but before the ref is cleaned up.
-        // This check prevents using a destroyed object.
-        if (!playerSprite || playerSprite.destroyed) {
-          return;
-        }
+        if (!playerSprite || playerSprite.destroyed) return;
         
-        // DEFINITIVE FIX: Validate and reset coordinates on every frame before calculation.
-        // This prevents any possibility of a NaN calculation.
-        if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
-            playerSprite.x = typeof localPlayer.x === 'number' && !isNaN(localPlayer.x) ? localPlayer.x : 0;
-        }
-        if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
-            playerSprite.y = typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : 0;
-        }
+        // DEFINITIVE FIX 1: Aggressively reset coordinates if they are ever NaN.
+        // This handles race conditions where the sprite exists but its position hasn't been set.
+        if (isNaN(playerSprite.x)) playerSprite.x = 0;
+        if (isNaN(playerSprite.y)) playerSprite.y = 0;
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
@@ -183,8 +167,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
             playerSprite.x += dx * speed * time.delta;
             playerSprite.y += dy * speed * time.delta;
-          
-            updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+            
+            // DEFINITIVE FIX 2: Check the result of the calculation *before* sending to the database.
+            // This prevents the throttled update function from ever being called with bad data.
+            if (!isNaN(playerSprite.x) && !isNaN(playerSprite.y)) {
+              updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+            }
         }
         
         const newAnimationName = `${newDirection}_walk`;
@@ -252,9 +240,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
-            const texture = await Assets.load(character.png.src);
+            const baseTexture = await Assets.load<Texture>(character.png.src);
             const sheet = new Spritesheet(
-                texture.baseTexture,
+                baseTexture,
                 character.json
             );
             await sheet.parse();
