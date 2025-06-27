@@ -1,5 +1,5 @@
-
 'use client';
+
 import { useRef, useEffect, useCallback } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet } from 'pixi.js';
 import type { Player } from '@/lib/types';
@@ -151,7 +151,16 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const world = worldRef.current;
 
     const loadAssetsAndPlayers = async () => {
-      const characterIds = new Set(onlinePlayers.map(p => p.characterId));
+      const playersToRender = new Map<string, Player>();
+      onlinePlayers.forEach(p => playersToRender.set(p.uid, p));
+      if (currentPlayer) {
+        playersToRender.set(currentPlayer.uid, currentPlayer);
+      }
+      
+      const allPlayers = Array.from(playersToRender.values());
+      const allPlayerIds = allPlayers.map(p => p.uid);
+      const characterIds = new Set(allPlayers.map(p => p.characterId));
+
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
@@ -166,10 +175,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       }
 
       const currentPlayersInScene = Object.keys(playerSpritesRef.current);
-      const onlinePlayerIds = onlinePlayers.map(p => p.uid);
-
       currentPlayersInScene.forEach(uid => {
-        if (!onlinePlayerIds.includes(uid)) {
+        if (!allPlayerIds.includes(uid)) {
           if (playerSpritesRef.current[uid]) world.removeChild(playerSpritesRef.current[uid]);
           if (playerTextRef.current[uid]) world.removeChild(playerTextRef.current[uid]);
           delete playerSpritesRef.current[uid];
@@ -177,7 +184,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         }
       });
 
-      for (const player of onlinePlayers) {
+      for (const player of allPlayers) {
         const sheet = loadedSheetsRef.current[player.characterId];
         if (!sheet) continue;
 
@@ -213,8 +220,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
-          sprite.x = isCurrentUser ? currentPlayerRef.current.x : player.x;
-          sprite.y = isCurrentUser ? currentPlayerRef.current.y : player.y;
+          sprite.x = player.x;
+          sprite.y = player.y;
           sprite.zIndex = 1;
           
           world.addChild(sprite);
