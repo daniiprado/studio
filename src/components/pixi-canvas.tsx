@@ -31,7 +31,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     currentPlayerRef.current = currentPlayer;
   }, [currentPlayer]);
 
-  // Use a ref for gameState to access it in the ticker without re-triggering effects
   const gameStateRef = useRef(gameState);
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -40,8 +39,20 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const updatePlayerInDb = useCallback(throttle(async (data: Partial<Player>) => {
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
+
+    // This is the final safeguard. We absolutely will not send NaN to the database.
+    const sanitizedData = { ...data };
+    if (sanitizedData.x !== undefined && (typeof sanitizedData.x !== 'number' || isNaN(sanitizedData.x))) {
+      console.error(`Invalid 'x' coordinate detected (${sanitizedData.x}). Aborting database update.`);
+      return;
+    }
+     if (sanitizedData.y !== undefined && (typeof sanitizedData.y !== 'number' || isNaN(sanitizedData.y))) {
+      console.error(`Invalid 'y' coordinate detected (${sanitizedData.y}). Aborting database update.`);
+      return;
+    }
+
     const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
-    await update(playerRef, data);
+    await update(playerRef, sanitizedData);
   }, 100), []);
 
   useEffect(() => {
@@ -65,11 +76,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
       const world = new Container();
       world.sortableChildren = true;
-      world.visible = false; // Start with the world invisible
+      world.visible = false; 
       worldRef.current = world;
       app.stage.addChild(world);
 
-      // --- LOBBY SCREEN ---
       const lobbyContainer = new Container();
       app.stage.addChild(lobbyContainer);
 
@@ -116,8 +126,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         }
       };
       app.renderer.on('resize', resizeHandler);
-      // --- END LOBBY SCREEN ---
-
 
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
@@ -130,19 +138,15 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (!localPlayer) return;
 
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
-        if (!playerSprite) return;
+        // CRITICAL FIX: A race condition can occur where this ticker runs after
+        // a sprite has been destroyed by a React effect but before the ref is cleaned up.
+        // This check prevents using a destroyed object.
+        if (!playerSprite || playerSprite.destroyed) {
+          return;
+        }
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
-
-        // Definitive Fix: Before any calculation, ensure sprite coordinates are valid.
-        // This self-heals from any potential NaN state from the DB or race conditions.
-        if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
-            playerSprite.x = 0;
-        }
-        if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
-            playerSprite.y = 0;
-        }
         
         const speed = 2.5;
         let dx = 0;
@@ -281,8 +285,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
              delete playerSpritesRef.current[player.uid];
              delete playerTextRef.current[player.uid];
           } else {
-             // Only update position for remote players from DB
              if (!isCurrentUser) {
+                // Ensure data from DB is a valid number before applying it
                 sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : sprite.x;
                 sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : sprite.y;
                 
@@ -305,6 +309,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
+          // Ensure initial data is a valid number
           sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 0;
           sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 0;
           sprite.zIndex = 1;
