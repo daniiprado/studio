@@ -145,6 +145,15 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           return;
         }
         
+        // DEFINITIVE FIX: Validate and reset coordinates on every frame before calculation.
+        // This prevents any possibility of a NaN calculation.
+        if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
+            playerSprite.x = typeof localPlayer.x === 'number' && !isNaN(localPlayer.x) ? localPlayer.x : 0;
+        }
+        if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
+            playerSprite.y = typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : 0;
+        }
+        
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
         
