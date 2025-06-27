@@ -14,8 +14,54 @@ interface PixiCanvasProps {
   onlinePlayers: Player[];
 }
 
-// Add characterId to the sprite type
 type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterId?: string; };
+
+// 0: Grass, 1: Wall, 2: Floor, 3: Desk
+const TILE_SIZE = 32;
+const MAP_WIDTH_TILES = 40;
+const MAP_HEIGHT_TILES = 30;
+
+// Using a simplified map layout for brevity
+// prettier-ignore
+const mapLayout = [
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 1, 3, 3, 1, 2, 1, 3, 3, 2, 2, 1, 2, 1, 3, 3, 2, 1, 2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 1, 2, 1, 2, 2, 2, 1, 2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1],
+  [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+];
+
+const TILE_COLORS = {
+  0: 0x228B22, // Grass
+  1: 0x4a4a4a, // Wall
+  2: 0xD3D3D3, // Floor
+  3: 0x8B4513, // Desk
+};
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
@@ -41,15 +87,42 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
 
-    // Final safeguard before sending data to the database
-    if ( (data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y))) ) {
-      // Silently abort if data is invalid, to prevent crashes
-      return; 
+    if ((data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y)))) {
+      // Silently abort if data is invalid
+      return;
     }
 
     const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
     await update(playerRef, data);
   }, 100), []);
+  
+  const checkCollision = (x: number, y: number, width: number, height: number): boolean => {
+    const left = x - width / 2;
+    const right = x + width / 2;
+    const top = y - height / 2;
+    const bottom = y + height / 2;
+  
+    const corners = [
+      { x: left, y: top }, { x: right, y: top },
+      { x: left, y: bottom }, { x: right, y: bottom },
+    ];
+  
+    for (const corner of corners) {
+      const tileX = Math.floor(corner.x / TILE_SIZE);
+      const tileY = Math.floor(corner.y / TILE_SIZE);
+  
+      if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) {
+        return true; // Out of bounds
+      }
+  
+      const tileType = mapLayout[tileY]?.[tileX];
+      if (tileType === 1 || tileType === 3) { // 1: Wall, 3: Desk
+        return true; // Collision
+      }
+    }
+  
+    return false;
+  };
 
   useEffect(() => {
     if (!pixiContainer.current || appRef.current) return;
@@ -75,6 +148,22 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       world.visible = false; 
       worldRef.current = world;
       app.stage.addChild(world);
+      
+      const mapContainer = new Container();
+      mapContainer.zIndex = 0;
+      world.addChild(mapContainer);
+
+      for (let y = 0; y < MAP_HEIGHT_TILES; y++) {
+          for (let x = 0; x < MAP_WIDTH_TILES; x++) {
+              const tileType = mapLayout[y][x] as keyof typeof TILE_COLORS;
+              const tile = new Graphics();
+              tile.fill(TILE_COLORS[tileType]);
+              tile.rect(0, 0, TILE_SIZE, TILE_SIZE);
+              tile.x = x * TILE_SIZE;
+              tile.y = y * TILE_SIZE;
+              mapContainer.addChild(tile);
+          }
+      }
 
       const lobbyContainer = new Container();
       app.stage.addChild(lobbyContainer);
@@ -85,22 +174,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
       const buttonText = new Text({
         text: 'ENTRAR',
-        style: {
-          fill: 0xffffff,
-          fontSize: 28,
-          fontFamily: 'Space Grotesk, sans-serif',
-          fontWeight: 'bold',
-        }
+        style: { fill: 0xffffff, fontSize: 28, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 'bold' }
       });
       buttonText.anchor.set(0.5);
       buttonText.position.set(buttonGraphic.width / 2, buttonGraphic.height / 2);
       
       const enterButton = new Container();
       enterButton.addChild(buttonGraphic, buttonText);
-      enterButton.position.set(
-        app.screen.width / 2 - buttonGraphic.width / 2,
-        app.screen.height / 2 - buttonGraphic.height / 2
-      );
+      enterButton.position.set(app.screen.width / 2 - buttonGraphic.width / 2, app.screen.height / 2 - buttonGraphic.height / 2);
       enterButton.eventMode = 'static';
       enterButton.cursor = 'pointer';
 
@@ -115,10 +196,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       
       const resizeHandler = () => {
         if (lobbyContainer.visible) {
-            enterButton.position.set(
-                app.screen.width / 2 - enterButton.width / 2,
-                app.screen.height / 2 - enterButton.height / 2
-            );
+            enterButton.position.set(app.screen.width / 2 - enterButton.width / 2, app.screen.height / 2 - enterButton.height / 2);
         }
       };
       app.renderer.on('resize', resizeHandler);
@@ -133,12 +211,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (!localPlayer) return;
 
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
-        // Critical check: if sprite is destroyed or doesn't exist, stop.
         if (!playerSprite || playerSprite.destroyed) return;
         
-        // Self-healing: ensure coordinates are valid numbers before any calculations
-        if (isNaN(playerSprite.x)) playerSprite.x = localPlayer.x ?? 0;
-        if (isNaN(playerSprite.y)) playerSprite.y = localPlayer.y ?? 0;
+        if (isNaN(playerSprite.x)) playerSprite.x = 0;
+        if (isNaN(playerSprite.y)) playerSprite.y = 0;
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
@@ -151,29 +227,37 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (keysDown.current['s'] || keysDown.current['arrowdown']) dy += 1;
         if (keysDown.current['a'] || keysDown.current['arrowleft']) dx -= 1;
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
+
+        const oldX = playerSprite.x;
+        const oldY = playerSprite.y;
+
+        if (dx !== 0 || dy !== 0) {
+          const moveX = dx * speed * time.deltaTime;
+          const moveY = dy * speed * time.deltaTime;
+      
+          playerSprite.x += moveX;
+          if (checkCollision(playerSprite.x, playerSprite.y, playerSprite.width, playerSprite.height)) {
+            playerSprite.x -= moveX; // Revert X move
+          }
+      
+          playerSprite.y += moveY;
+          if (checkCollision(playerSprite.x, playerSprite.y, playerSprite.width, playerSprite.height)) {
+            playerSprite.y -= moveY; // Revert Y move
+          }
+        }
         
-        const moved = dx !== 0 || dy !== 0;
+        const moved = playerSprite.x !== oldX || playerSprite.y !== oldY;
         let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as Player['direction'] || 'front';
 
         if (moved) {
-            if (dy < 0) { newDirection = 'back'; }
-            else if (dy > 0) { newDirection = 'front'; }
-            else if (dx < 0) { newDirection = 'left'; }
-            else if (dx > 0) { newDirection = 'right'; }
+          if (dy < 0 && Math.abs(playerSprite.y - oldY) > Math.abs(playerSprite.x - oldX)) { newDirection = 'back'; }
+          else if (dy > 0 && Math.abs(playerSprite.y - oldY) > Math.abs(playerSprite.x - oldX)) { newDirection = 'front'; }
+          else if (dx < 0) { newDirection = 'left'; }
+          else if (dx > 0) { newDirection = 'right'; }
             
-            if (dx !== 0 && dy !== 0) {
-                const length = Math.sqrt(dx * dx + dy * dy);
-                dx /= length;
-                dy /= length;
-            }
-
-            playerSprite.x += dx * speed * time.deltaTime;
-            playerSprite.y += dy * speed * time.deltaTime;
-            
-            // Post-calculation validation before sending to DB
-            if (!isNaN(playerSprite.x) && !isNaN(playerSprite.y)) {
-              updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
-            }
+          if (!isNaN(playerSprite.x) && !isNaN(playerSprite.y)) {
+            updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+          }
         }
         
         const newAnimationName = `${newDirection}_walk`;
@@ -228,11 +312,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       const playersToRender = new Map<string, Player>();
       playersToRender.set(currentPlayer.uid, currentPlayer);
 
-      onlinePlayers.forEach(p => {
-        if (p.uid !== currentPlayer.uid) {
-            playersToRender.set(p.uid, p)
-        }
-      });
+      onlinePlayers.forEach(p => playersToRender.set(p.uid, p));
       
       const allPlayers = Array.from(playersToRender.values());
       const allPlayerIds = allPlayers.map(p => p.uid);
@@ -241,12 +321,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
-            // Using modern Assets loader
             const baseTexture = await Assets.load<Texture>(character.png.src);
-            const sheet = new Spritesheet(
-                baseTexture,
-                character.json
-            );
+            const sheet = new Spritesheet(baseTexture, character.json);
             await sheet.parse();
             loadedSheetsRef.current[id] = sheet;
         }
@@ -310,6 +386,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
+          sprite.scale.set(0.75);
           sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 0;
           sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 0;
           sprite.zIndex = 1;
@@ -321,10 +398,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           const text = new Text({
             text: player.name || 'Player',
             style: {
-              fontFamily: 'Inter, sans-serif',
-              fontSize: 12,
-              fill: 0xffffff,
-              stroke: { color: 0x000000, width: 3, join: 'round' },
+              fontFamily: 'Inter, sans-serif', fontSize: 12,
+              fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' },
               align: 'center',
             }
           });
