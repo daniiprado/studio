@@ -14,7 +14,8 @@ interface PixiCanvasProps {
   onlinePlayers: Player[];
 }
 
-type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; };
+// Add characterId to the sprite type
+type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterId?: string; };
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
@@ -40,7 +41,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
 
+    // Final safeguard before sending data to the database
     if ( (data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y))) ) {
+      // Silently abort if data is invalid, to prevent crashes
       return; 
     }
 
@@ -130,10 +133,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (!localPlayer) return;
 
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
+        // Critical check: if sprite is destroyed or doesn't exist, stop.
         if (!playerSprite || playerSprite.destroyed) return;
         
-        if (isNaN(playerSprite.x)) playerSprite.x = 0;
-        if (isNaN(playerSprite.y)) playerSprite.y = 0;
+        // Self-healing: ensure coordinates are valid numbers before any calculations
+        if (isNaN(playerSprite.x)) playerSprite.x = localPlayer.x ?? 0;
+        if (isNaN(playerSprite.y)) playerSprite.y = localPlayer.y ?? 0;
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
@@ -165,6 +170,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
             playerSprite.x += dx * speed * time.deltaTime;
             playerSprite.y += dy * speed * time.deltaTime;
             
+            // Post-calculation validation before sending to DB
             if (!isNaN(playerSprite.x) && !isNaN(playerSprite.y)) {
               updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
             }
@@ -235,6 +241,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
+            // Using modern Assets loader
             const baseTexture = await Assets.load<Texture>(character.png.src);
             const sheet = new Spritesheet(
                 baseTexture,
@@ -271,15 +278,17 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           const sprite = playerSpritesRef.current[player.uid];
           const text = playerTextRef.current[player.uid];
           
-          if(sprite.textures[0].baseTexture.uid !== sheet.baseTexture.uid){
+          if(sprite.characterId !== player.characterId){
              sprite.destroy();
              text.destroy();
              delete playerSpritesRef.current[player.uid];
              delete playerTextRef.current[player.uid];
           } else {
              if (!isCurrentUser) {
-                sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : sprite.x;
-                sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : sprite.y;
+                const newX = typeof player.x === 'number' && !isNaN(player.x) ? player.x : sprite.x;
+                const newY = typeof player.y === 'number' && !isNaN(player.y) ? player.y : sprite.y;
+                sprite.x = newX;
+                sprite.y = newY;
                 
                 if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
                     sprite.textures = sheet.animations[animationName];
@@ -297,6 +306,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           if(!sheet.animations[animationName]) continue;
           
           const sprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
+          sprite.characterId = player.characterId;
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
