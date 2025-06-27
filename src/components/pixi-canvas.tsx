@@ -1,11 +1,12 @@
+
 'use client';
 
 import { useRef, useEffect, useCallback } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet } from 'pixi.js';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, BaseTexture } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
-import { db } from '@/lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { rtdb } from '@/lib/firebase';
+import { ref, update } from 'firebase/database';
 import { throttle } from 'lodash';
 
 interface PixiCanvasProps {
@@ -32,8 +33,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const updatePlayerInDb = useCallback(throttle(async (data: Partial<Player>) => {
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
-    const playerDocRef = doc(db, 'players', localPlayer.uid);
-    await updateDoc(playerDocRef, data);
+    const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
+    await update(playerRef, data);
   }, 100), []);
 
   useEffect(() => {
@@ -152,10 +153,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
     const loadAssetsAndPlayers = async () => {
       const playersToRender = new Map<string, Player>();
-      onlinePlayers.forEach(p => playersToRender.set(p.uid, p));
+      // Add the current player first to ensure they are always in the map
       if (currentPlayer) {
         playersToRender.set(currentPlayer.uid, currentPlayer);
       }
+      // Then add all other online players
+      onlinePlayers.forEach(p => playersToRender.set(p.uid, p));
       
       const allPlayers = Array.from(playersToRender.values());
       const allPlayerIds = allPlayers.map(p => p.uid);

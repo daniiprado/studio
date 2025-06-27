@@ -1,4 +1,3 @@
-import type { Timestamp } from 'firebase/firestore';
 
 export interface Player {
   uid: string;
@@ -7,7 +6,7 @@ export interface Player {
   photoURL: string | null;
   characterId: string;
   isOnline: boolean;
-  lastActive: Timestamp;
+  lastActive: number;
   x: number;
   y: number;
   direction: 'front' | 'back' | 'left' | 'right';

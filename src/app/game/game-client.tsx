@@ -16,8 +16,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { equalTo, onValue, orderByChild, query, ref } from 'firebase/database';
+import { rtdb } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
 import dynamic from 'next/dynamic';
 import CharacterSelectionDialog from '@/components/character-selection-dialog';
@@ -48,12 +48,18 @@ export default function GameClient() {
   useEffect(() => {
     if (!user) return;
   
-    const q = query(collection(db, "players"), where("isOnline", "==", true));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const playersRef = query(ref(rtdb, "players"), orderByChild("isOnline"), equalTo(true));
+    const unsubscribe = onValue(playersRef, (snapshot) => {
       const playersData: Player[] = [];
-      snapshot.forEach((doc) => {
-        playersData.push({ ...doc.data(), uid: doc.id } as Player);
-      });
+      if (snapshot.exists()) {
+        const playersObject = snapshot.val();
+        Object.keys(playersObject).forEach((uid) => {
+          // We only add other players, the current player is handled separately
+          if (uid !== user.uid) {
+            playersData.push({ ...playersObject[uid], uid });
+          }
+        });
+      }
       setOnlinePlayers(playersData);
     });
   

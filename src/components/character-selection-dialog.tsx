@@ -1,8 +1,9 @@
+
 'use client';
 
-import { doc, updateDoc } from 'firebase/firestore';
+import { ref, update } from 'firebase/database';
 import Image from 'next/image';
-import { db } from '@/lib/firebase';
+import { rtdb } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_LIST, Character } from '@/lib/characters';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -31,8 +32,8 @@ export default function CharacterSelectionDialog({ isOpen, setIsOpen, currentPla
 
         setIsSaving(true);
         try {
-            const playerDocRef = doc(db, 'players', currentPlayer.uid);
-            await updateDoc(playerDocRef, {
+            const playerRef = ref(rtdb, `players/${currentPlayer.uid}`);
+            await update(playerRef, {
                 characterId: selectedCharacterId,
             });
             toast({
@@ -107,4 +108,3 @@ export default function CharacterSelectionDialog({ isOpen, setIsOpen, currentPla
         </Dialog>
     );
 }
-

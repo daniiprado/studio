@@ -1,9 +1,17 @@
+
 'use client';
 
 import { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, signInWithRedirect, GoogleAuthProvider, signOut as firebaseSignOut, User, getRedirectResult } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import {
+  ref,
+  get,
+  set,
+  update,
+  onDisconnect,
+  serverTimestamp,
+} from 'firebase/database';
+import { auth, rtdb } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_LIST } from '@/lib/characters';
 
@@ -25,13 +33,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const handleUserDocument = useCallback(async (firebaseUser: User) => {
-    const playerDocRef = doc(db, 'players', firebaseUser.uid);
-    const playerDoc = await getDoc(playerDocRef);
+    const playerRef = ref(rtdb, `players/${firebaseUser.uid}`);
+    const playerSnapshot = await get(playerRef);
     const initialX = 0;
     const initialY = 0;
 
+    // Set up onDisconnect to mark user as offline and update last active time
+    onDisconnect(playerRef).update({ isOnline: false, lastActive: serverTimestamp() });
 
-    if (!playerDoc.exists()) {
+    if (!playerSnapshot.exists()) {
       const randomCharacter = CHARACTERS_LIST[Math.floor(Math.random() * CHARACTERS_LIST.length)];
       const newPlayer: Player = {
         uid: firebaseUser.uid,
@@ -40,24 +50,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         photoURL: firebaseUser.photoURL,
         characterId: randomCharacter.id,
         isOnline: true,
-        lastActive: serverTimestamp() as any,
+        lastActive: serverTimestamp() as any, // RTDB placeholder
         x: initialX,
         y: initialY,
         direction: 'front',
       };
-      await setDoc(playerDocRef, newPlayer);
-      setPlayer(newPlayer);
+      await set(playerRef, newPlayer);
+      setPlayer({ ...newPlayer, lastActive: Date.now() }); // Use client-side time for initial local state
     } else {
-      // For existing users, also reset their position to the center on login
-      // to ensure they are visible.
-      await updateDoc(playerDocRef, {
+      const updates = {
         isOnline: true,
         lastActive: serverTimestamp(),
         x: initialX,
         y: initialY,
-      });
-      // Use the existing data but override x and y for the local state immediately
-      setPlayer({ ...playerDoc.data(), uid: playerDoc.id, x: initialX, y: initialY, isOnline: true } as Player);
+        direction: 'front',
+      };
+      await update(playerRef, updates);
+      // Use existing data, but override with login-time values for local state
+      setPlayer({ ...playerSnapshot.val(), uid: playerSnapshot.key, ...updates, isOnline: true } as Player);
     }
   }, []);
 
@@ -79,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Error getting redirect result", error);
       }
+      // Set loading to false only after redirect result has been processed
       setLoading(false);
     };
 
@@ -89,31 +100,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await handleUserDocument(firebaseUser);
         }
       } else {
-        if (user) { // only update if a user was previously logged in
-            const playerDocRef = doc(db, 'players', user.uid);
-            await updateDoc(playerDocRef, { isOnline: false, lastActive: serverTimestamp() });
-        }
         setUser(null);
         setPlayer(null);
         setAccessToken(null);
       }
-      setLoading(false);
+       if (auth.currentUser === firebaseUser) {
+         setLoading(false);
+       }
     });
 
     checkRedirectResult();
 
-    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
-        if (auth.currentUser) {
-            const playerDocRef = doc(db, 'players', auth.currentUser.uid);
-            await updateDoc(playerDocRef, { isOnline: false, lastActive: serverTimestamp() });
-        }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
     return () => {
         unsubscribe();
-        window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [handleUserDocument, user]);
 
@@ -130,8 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     if (user) {
-        const playerDocRef = doc(db, 'players', user.uid);
-        await updateDoc(playerDocRef, { isOnline: false, lastActive: serverTimestamp() });
+        const playerRef = ref(rtdb, `players/${user.uid}`);
+        // Set offline status gracefully on sign out
+        await update(playerRef, { isOnline: false, lastActive: serverTimestamp() });
     }
     await firebaseSignOut(auth);
   };
