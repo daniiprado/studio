@@ -1,0 +1,18 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /players/{userId} {
+      // Allow any authenticated user to read player data.
+      // This is necessary for players to see each other on the map (querying for isOnline: true)
+      // and for the initial check to see if a player document exists.
+      allow read: if request.auth != null;
+
+      // Allow a user to create their own player document upon first login,
+      // and update it with their position, character, and online status.
+      // They cannot write to other players' documents.
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
