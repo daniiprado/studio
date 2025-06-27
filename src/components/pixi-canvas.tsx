@@ -158,11 +158,15 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         playersToRender.set(currentPlayer.uid, currentPlayer);
       }
       // Then add all other online players
-      onlinePlayers.forEach(p => playersToRender.set(p.uid, p));
+      onlinePlayers.forEach(p => {
+        if (p.uid !== currentPlayer.uid) {
+            playersToRender.set(p.uid, p);
+        }
+      });
       
       const allPlayers = Array.from(playersToRender.values());
       const allPlayerIds = allPlayers.map(p => p.uid);
-      const characterIds = new Set(allPlayers.map(p => p.characterId));
+      const characterIds = new Set(allPlayers.map(p => p.characterId).filter(Boolean));
 
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
@@ -188,6 +192,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       });
 
       for (const player of allPlayers) {
+        if (!player.characterId) continue;
         const sheet = loadedSheetsRef.current[player.characterId];
         if (!sheet) continue;
 
@@ -204,8 +209,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
              delete playerTextRef.current[player.uid];
           } else {
             // Always update position for all players from the authoritative source (props)
-            sprite.x = player.x;
-            sprite.y = player.y;
+            sprite.x = player.x ?? 0;
+            sprite.y = player.y ?? 0;
 
             // For remote players, update their animation based on DB data.
             // For the local player, the ticker handles animation changes based on input.
@@ -230,8 +235,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
-          sprite.x = player.x;
-          sprite.y = player.y;
+          sprite.x = player.x ?? 0;
+          sprite.y = player.y ?? 0;
           sprite.zIndex = 1;
           
           world.addChild(sprite);
