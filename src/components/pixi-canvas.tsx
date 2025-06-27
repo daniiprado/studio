@@ -66,6 +66,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
+  const lobbyRef = useRef<Container | null>(null);
   const playerSpritesRef = useRef<Record<string, PlayerSprite>>({});
   const playerTextRef = useRef<Record<string, Text>>({});
   const loadedSheetsRef = useRef<Record<string, Spritesheet>>({});
@@ -164,6 +165,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       }
 
       const lobbyContainer = new Container();
+      lobbyRef.current = lobbyContainer;
 
       const buttonGraphic = new Graphics();
       buttonGraphic.roundRect(0, 0, 220, 70, 15).fill({ color: 0x000000, alpha: 0.6 });
@@ -184,15 +186,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
       const onEnterClick = () => {
         setGameState('playing');
-        app.stage.removeChild(lobbyContainer);
-        if (worldRef.current) {
-          app.stage.addChild(worldRef.current);
-        }
       };
       
       enterButton.on('pointertap', onEnterClick);
       lobbyContainer.addChild(enterButton);
-      app.stage.addChild(lobbyContainer);
       
       const resizeHandler = () => {
         if (lobbyContainer.parent) {
@@ -213,8 +210,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
         if (!playerSprite || playerSprite.destroyed) return;
         
-        if (isNaN(playerSprite.x)) playerSprite.x = 0;
-        if (isNaN(playerSprite.y)) playerSprite.y = 0;
+        if (isNaN(playerSprite.x)) playerSprite.x = localPlayer.x ?? 0;
+        if (isNaN(playerSprite.y)) playerSprite.y = localPlayer.y ?? 0;
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
@@ -233,6 +230,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
         let newX = playerSprite.x + dx * speed * time.deltaTime;
         let newY = playerSprite.y + dy * speed * time.deltaTime;
+
+        if (isNaN(newX)) newX = playerSprite.x;
+        if (isNaN(newY)) newY = playerSprite.y;
 
         if (!checkCollision(newX, playerSprite.y, playerSprite.width, playerSprite.height)) {
           playerSprite.x = newX;
@@ -275,12 +275,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           playerText.x = playerSprite.x;
           playerText.y = playerSprite.y - playerSprite.height - 5;
         }
-
-        if (worldRef.current && worldRef.current.pivot) {
-          worldRef.current.pivot.x = playerSprite.x;
-          worldRef.current.pivot.y = playerSprite.y;
-          worldRef.current.position.set(app.screen.width / 2, app.screen.height / 2);
-        }
       });
     };
     
@@ -294,7 +288,25 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         appRef.current = null;
       }
     };
-  }, [updatePlayerInDb]);
+  }, []);
+
+  useEffect(() => {
+    const app = appRef.current;
+    if (!app) return;
+
+    const world = worldRef.current;
+    const lobby = lobbyRef.current;
+
+    if (gameState === 'playing') {
+        if (lobby?.parent) app.stage.removeChild(lobby);
+        if (world && !world.parent) app.stage.addChild(world);
+    } else { // lobby
+        if (world?.parent) app.stage.removeChild(world);
+        if (lobby && !lobby.parent) app.stage.addChild(lobby);
+    }
+
+  }, [gameState]);
+
 
   useEffect(() => {
     if (!appRef.current || !worldRef.current) return;
@@ -383,8 +395,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
           sprite.scale.set(0.75);
-          sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 0;
-          sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 0;
+          sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 150;
+          sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 400;
           sprite.zIndex = 1;
           sprite.gotoAndStop(0);
           
