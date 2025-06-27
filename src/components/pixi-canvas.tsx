@@ -87,6 +87,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
 
+    // Final safeguard before DB update
     if ((data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y)))) {
       // Silently abort if data is invalid
       return;
@@ -208,12 +209,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (!localPlayer) return;
 
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
+        
         if (!playerSprite || playerSprite.destroyed) return;
         
-        // This is a robust check to prevent NaN errors from corrupting the state.
         if (isNaN(playerSprite.x)) playerSprite.x = localPlayer.x ?? 0;
         if (isNaN(playerSprite.y)) playerSprite.y = localPlayer.y ?? 0;
-        // Final fallback if localPlayer data is also somehow corrupted
+
         if (isNaN(playerSprite.x)) playerSprite.x = 0;
         if (isNaN(playerSprite.y)) playerSprite.y = 0;
         
@@ -235,10 +236,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         let newX = playerSprite.x + dx * speed * time.deltaTime;
         let newY = playerSprite.y + dy * speed * time.deltaTime;
         
-        // Final validation before assignment.
-        if (isNaN(newX)) newX = playerSprite.x;
-        if (isNaN(newY)) newY = playerSprite.y;
-
         if (!checkCollision(newX, playerSprite.y, playerSprite.width, playerSprite.height)) {
           playerSprite.x = newX;
         }
@@ -334,7 +331,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
-            // Use modern Assets loader to cache texture, then manually create spritesheet
             const baseTexture = await Assets.load<Texture>(character.png.src);
             const sheet = new Spritesheet(baseTexture, character.json);
             await sheet.parse();
@@ -435,3 +431,5 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 };
 
 export default PixiCanvas;
+
+    
