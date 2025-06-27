@@ -164,13 +164,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       if (currentPlayer) {
         playersToRender.set(currentPlayer.uid, currentPlayer);
       }
-      onlinePlayers.forEach(p => {
-        if (!currentPlayer || p.uid !== currentPlayer.uid) {
-            playersToRender.set(p.uid, p);
-        }
-      });
+      onlinePlayers.forEach(p => playersToRender.set(p.uid, p));
       
       const allPlayers = Array.from(playersToRender.values());
+      
       const allPlayerIds = allPlayers.map(p => p.uid);
       const characterIds = new Set(allPlayers.map(p => p.characterId).filter(Boolean));
 
