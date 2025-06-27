@@ -2,7 +2,7 @@
 'use client';
 
 import { useRef, useEffect, useCallback } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, BaseTexture } from 'pixi.js';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
@@ -84,19 +84,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
         
         let moved = dx !== 0 || dy !== 0;
-        let currentAnimationName = playerSprite.currentAnimationName || `${localPlayer.direction}_walk`;
-        let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as Player['direction']) ?? 'front';
-        let animationShouldPlay = moved;
         
         if (moved) {
-            // Defensive check to prevent NaN coordinates
+            // Definitive Fix: Before any calculation, ensure sprite coordinates are valid.
+            // If they are not (e.g., NaN), reset them to the last known good state from React.
             if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
                 playerSprite.x = localPlayer.x ?? 0;
             }
             if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
                 playerSprite.y = localPlayer.y ?? 0;
             }
-            
+
+            let newDirection: Player['direction'] = localPlayer.direction;
             if (dy < 0) { newDirection = 'back'; }
             else if (dy > 0) { newDirection = 'front'; }
             else if (dx < 0) { newDirection = 'left'; }
@@ -113,7 +112,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
             playerSprite.x += dx * speed * time.delta;
             playerSprite.y += dy * speed * time.delta;
           
-            if (currentAnimationName !== newAnimationName) {
+            if (playerSprite.currentAnimationName !== newAnimationName) {
                 if(sheet.animations[newAnimationName]) {
                     playerSprite.textures = sheet.animations[newAnimationName];
                     playerSprite.currentAnimationName = newAnimationName;
@@ -123,6 +122,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
             updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
         }
         
+        const animationShouldPlay = moved;
         if (animationShouldPlay && !playerSprite.playing) {
             playerSprite.play();
         } else if (!animationShouldPlay && playerSprite.playing) {
@@ -161,13 +161,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
     const loadAssetsAndPlayers = async () => {
       const playersToRender = new Map<string, Player>();
-      // Add the current player first to ensure they are always in the map
       if (currentPlayer) {
         playersToRender.set(currentPlayer.uid, currentPlayer);
       }
-      // Then add all other online players
       onlinePlayers.forEach(p => {
-        if (p.uid !== currentPlayer.uid) {
+        if (!currentPlayer || p.uid !== currentPlayer.uid) {
             playersToRender.set(p.uid, p);
         }
       });
@@ -179,6 +177,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       for (const id of characterIds) {
         if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
             const character = CHARACTERS_MAP[id];
+            // Use Assets.load to get the texture, then get its baseTexture for the Spritesheet
             const texture = await Assets.load(character.png.src);
             const sheet = new Spritesheet(
                 texture.baseTexture,
@@ -204,7 +203,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const sheet = loadedSheetsRef.current[player.characterId];
         if (!sheet) continue;
 
-        const isCurrentUser = player.uid === currentPlayer.uid;
+        const isCurrentUser = currentPlayer && player.uid === currentPlayer.uid;
         const animationName = `${player.direction || 'front'}_walk`;
 
         if (playerSpritesRef.current[player.uid]) {
@@ -216,12 +215,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
              delete playerSpritesRef.current[player.uid];
              delete playerTextRef.current[player.uid];
           } else {
-            // Always update position for all players from the authoritative source (props)
             sprite.x = player.x ?? 0;
             sprite.y = player.y ?? 0;
 
-            // For remote players, update their animation based on DB data.
-            // For the local player, the ticker handles animation changes based on input.
             if (!isCurrentUser) {
               if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
                 sprite.textures = sheet.animations[animationName];
@@ -278,5 +274,3 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 };
 
 export default PixiCanvas;
-
-    
