@@ -138,10 +138,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         // Definitive Fix: Before any calculation, ensure sprite coordinates are valid.
         // This self-heals from any potential NaN state from the DB or race conditions.
         if (typeof playerSprite.x !== 'number' || isNaN(playerSprite.x)) {
-            playerSprite.x = typeof localPlayer.x === 'number' && !isNaN(localPlayer.x) ? localPlayer.x : 0;
+            playerSprite.x = 0;
         }
         if (typeof playerSprite.y !== 'number' || isNaN(playerSprite.y)) {
-            playerSprite.y = typeof localPlayer.y === 'number' && !isNaN(localPlayer.y) ? localPlayer.y : 0;
+            playerSprite.y = 0;
         }
         
         const speed = 2.5;
