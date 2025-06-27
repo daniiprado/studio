@@ -180,7 +180,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
                     playerSprite.currentAnimationName = newAnimationName;
                 }
             }
-          
             updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
         }
         
@@ -188,7 +187,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (animationShouldPlay && !playerSprite.playing) {
             playerSprite.play();
         } else if (!animationShouldPlay && playerSprite.playing) {
-            playerSprite.gotoAndStop(0);
+            playerSprite.stop();
         }
 
         const playerText = playerTextRef.current[localPlayer.uid];
@@ -240,7 +239,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       if (currentPlayer) {
         playersToRender.set(currentPlayer.uid, currentPlayer);
       }
-      onlinePlayers.forEach(p => playersToRender.set(p.uid, p));
+      onlinePlayers.forEach(p => {
+        if (currentPlayer && p.uid === currentPlayer.uid) return;
+        playersToRender.set(p.uid, p)
+      });
       
       const allPlayers = Array.from(playersToRender.values());
       
@@ -288,9 +290,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
              delete playerSpritesRef.current[player.uid];
              delete playerTextRef.current[player.uid];
           } else {
-            // Always update position for all sprites
-            sprite.x = player.x ?? 0;
-            sprite.y = player.y ?? 0;
+            // Always update position for all sprites, ensuring no NaN values.
+            sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 0;
+            sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 0;
 
             if (!isCurrentUser) {
               if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
@@ -313,8 +315,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
-          sprite.x = player.x ?? 0;
-          sprite.y = player.y ?? 0;
+          // Ensure no NaN values on creation.
+          sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 0;
+          sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 0;
           sprite.zIndex = 1;
           
           world.addChild(sprite);
