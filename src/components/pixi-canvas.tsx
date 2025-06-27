@@ -2,7 +2,7 @@
 'use client';
 
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Texture } from 'pixi.js';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
@@ -151,19 +151,19 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       world.addChild(mapContainer);
 
       for (let y = 0; y < MAP_HEIGHT_TILES; y++) {
-          for (let x = 0; x < MAP_WIDTH_TILES; x++) {
-              const tileType = mapLayout[y][x] as keyof typeof TILE_COLORS;
-              const tile = new Graphics();
-              tile.fill(TILE_COLORS[tileType]);
-              tile.rect(0, 0, TILE_SIZE, TILE_SIZE);
-              tile.x = x * TILE_SIZE;
-              tile.y = y * TILE_SIZE;
-              mapContainer.addChild(tile);
-          }
+        for (let x = 0; x < MAP_WIDTH_TILES; x++) {
+            const tileType = mapLayout[y][x] as keyof typeof TILE_COLORS;
+            const tile = new Sprite(Texture.WHITE);
+            tile.tint = TILE_COLORS[tileType];
+            tile.width = TILE_SIZE;
+            tile.height = TILE_SIZE;
+            tile.x = x * TILE_SIZE;
+            tile.y = y * TILE_SIZE;
+            mapContainer.addChild(tile);
+        }
       }
 
       const lobbyContainer = new Container();
-      app.stage.addChild(lobbyContainer);
 
       const buttonGraphic = new Graphics();
       buttonGraphic.roundRect(0, 0, 220, 70, 15).fill({ color: 0x000000, alpha: 0.6 });
@@ -192,9 +192,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       
       enterButton.on('pointertap', onEnterClick);
       lobbyContainer.addChild(enterButton);
+      app.stage.addChild(lobbyContainer);
       
       const resizeHandler = () => {
-        if (lobbyContainer.visible) {
+        if (lobbyContainer.parent) {
             enterButton.position.set(app.screen.width / 2 - enterButton.width / 2, app.screen.height / 2 - enterButton.height / 2);
         }
       };
