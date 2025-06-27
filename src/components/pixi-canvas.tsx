@@ -40,8 +40,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
 
-    if ( (data.x !== undefined && isNaN(data.x)) || (data.y !== undefined && isNaN(data.y)) ) {
-      // This block should not be reached anymore with the new checks in the ticker.
+    if ( (data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y))) ) {
       return; 
     }
 
@@ -133,8 +132,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
         if (!playerSprite || playerSprite.destroyed) return;
         
-        // DEFINITIVE FIX 1: Aggressively reset coordinates if they are ever NaN.
-        // This handles race conditions where the sprite exists but its position hasn't been set.
         if (isNaN(playerSprite.x)) playerSprite.x = 0;
         if (isNaN(playerSprite.y)) playerSprite.y = 0;
         
@@ -165,11 +162,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
                 dy /= length;
             }
 
-            playerSprite.x += dx * speed * time.delta;
-            playerSprite.y += dy * speed * time.delta;
+            playerSprite.x += dx * speed * time.deltaTime;
+            playerSprite.y += dy * speed * time.deltaTime;
             
-            // DEFINITIVE FIX 2: Check the result of the calculation *before* sending to the database.
-            // This prevents the throttled update function from ever being called with bad data.
             if (!isNaN(playerSprite.x) && !isNaN(playerSprite.y)) {
               updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
             }
@@ -283,7 +278,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
              delete playerTextRef.current[player.uid];
           } else {
              if (!isCurrentUser) {
-                // Ensure data from DB is a valid number before applying it
                 sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : sprite.x;
                 sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : sprite.y;
                 
@@ -306,7 +300,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
-          // Ensure initial data is a valid number
           sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 0;
           sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 0;
           sprite.zIndex = 1;
