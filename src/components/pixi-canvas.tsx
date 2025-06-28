@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useLayoutEffect } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
@@ -74,84 +74,40 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange, npcMessage }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
-  const worldRef = useRef<Container | null>(null);
-  const lobbyRef = useRef<Container | null>(null);
-  const playerSpritesRef = useRef<Record<string, PlayerSprite>>({});
-  const playerTextRef = useRef<Record<string, Text>>({});
-  const loadedSheetsRef = useRef<Record<string, Spritesheet>>({});
-  const keysDown = useRef<Record<string, boolean>>({});
-  
-  const [isPixiInitialized, setPixiInitialized] = useState(false);
-  
+
   // Use refs for props to ensure the main useEffect doesn't re-run
-  const currentPlayerRef = useRef(currentPlayer);
-  const gameStateRef = useRef(gameState);
-  const proximityStateRef = useRef(false);
-  const onProximityChangeRef = useRef(onProximityChange);
-  const setGameStateRef = useRef(setGameState);
+  const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange, npcMessage });
+  useLayoutEffect(() => {
+    propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange, npcMessage };
+  }, [currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange, npcMessage]);
 
-  const npcSpriteRef = useRef<PlayerSprite | null>(null);
-  const npcProximityIndicatorRef = useRef<Graphics | null>(null);
-  const npcChatBubbleRef = useRef<{ container: Container, text: Text, background: Graphics } | null>(null);
-  const chatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
-  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
-  useEffect(() => { onProximityChangeRef.current = onProximityChange; }, [onProximityChange]);
-  useEffect(() => { setGameStateRef.current = setGameState; }, [setGameState]);
 
   useEffect(() => {
-    if (!isPixiInitialized || !npcChatBubbleRef.current || !npcSpriteRef.current) return;
-    
-    const bubble = npcChatBubbleRef.current;
-    const sprite = npcSpriteRef.current;
-    
-    if (chatTimeoutRef.current) {
-      clearTimeout(chatTimeoutRef.current);
-    }
-    
-    if (npcMessage) {
-      bubble.text.text = npcMessage;
-      
-      const padding = 10;
-      const bubbleWidth = bubble.text.width + padding * 2;
-      const bubbleHeight = bubble.text.height + padding * 2;
+    const canvasContainer = pixiContainer.current;
+    if (!canvasContainer) return;
 
-      bubble.background.clear();
-      bubble.background.roundRect(0, 0, bubbleWidth, bubbleHeight, 8).fill({color: 0x000000, alpha: 0.7});
-      
-      bubble.text.x = padding;
-      bubble.text.y = padding;
-      
-      bubble.container.x = sprite.x - bubbleWidth / 2;
-      bubble.container.y = sprite.y - (sprite.height * sprite.scale.y) - bubbleHeight - 5;
-      bubble.container.visible = true;
-      
-      chatTimeoutRef.current = setTimeout(() => {
-        if (bubble) bubble.container.visible = false;
-        chatTimeoutRef.current = null;
-      }, 5000);
-    } else {
-      bubble.container.visible = false;
-    }
-
-  }, [npcMessage, isPixiInitialized]);
-  
-  useEffect(() => {
-    if (!pixiContainer.current) return;
+    let isMounted = true;
+    const app = new Application();
     
-    let app: Application | null = new Application();
-    appRef.current = app;
+    // PIXI objects, local to the effect
+    let world: Container | null = null;
+    let lobby: Container | null = null;
+    const playerSprites: Record<string, PlayerSprite> = {};
+    const playerText: Record<string, Text> = {};
+    const loadedSheets: Record<string, Spritesheet> = {};
+    const keysDown: Record<string, boolean> = {};
+    let npcSprite: PlayerSprite | null = null;
+    let npcProximityIndicator: Graphics | null = null;
+    let npcChatBubble: { container: Container, text: Text, background: Graphics } | null = null;
+    let chatTimeout: NodeJS.Timeout | null = null;
+    let proximityState = false;
 
-    const onKeyDown = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = true; };
-    const onKeyUp = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = false; };
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    
-    const updatePlayerInDb = throttle(async (data: Partial<Player>) => {
-      const localPlayer = currentPlayerRef.current;
-      if (!localPlayer) return;
+    const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
+    const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+
+    const updatePlayerInDb = throttle((data: Partial<Player>) => {
+      const { currentPlayer } = propsRef.current;
+      if (!currentPlayer) return;
 
       if ((data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) ||
           (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y)))) {
@@ -159,60 +115,31 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         return;
       }
 
-      const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
-      await update(playerRef, data);
+      const playerRef = ref(rtdb, `players/${currentPlayer.uid}`);
+      update(playerRef, data);
     }, 100);
 
-    const checkCollision = (x: number, y: number): boolean => {
-      const playerWidth = 16 * 0.5;
-      const playerHeight = 32 * 0.5; 
-  
-      const bounds = {
-        left: x - playerWidth / 2,
-        right: x + playerWidth / 2,
-        bottom: y + playerHeight / 4,
-      };
-      
-      const corners = [
-          { x: bounds.left, y: bounds.bottom - playerHeight / 2 },
-          { x: bounds.right, y: bounds.bottom - playerHeight / 2 },
-          { x: bounds.left, y: bounds.bottom },
-          { x: bounds.right, y: bounds.bottom },
-      ];
-  
-  
-      for (const corner of corners) {
-          const tileX = Math.floor(corner.x / TILE_SIZE);
-          const tileY = Math.floor(corner.y / TILE_SIZE);
-  
-          if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) {
-              return true;
-          }
-  
-          const tileType = mapLayout[tileY]?.[tileX];
-          if (tileType === 1 || tileType === 3) {
-              return true;
-          }
+    const init = async () => {
+      try {
+        await app.init({
+            backgroundColor: 0x1099bb,
+            resizeTo: canvasContainer,
+            autoDensity: true,
+            resolution: window.devicePixelRatio || 1,
+        });
+      } catch (e) {
+          console.error('Pixi.js init failed', e);
+          return;
       }
-      return false;
-    };
-
-
-    const initPixi = async () => {
-      if (!app || !pixiContainer.current) return;
-      await app.init({
-        backgroundColor: 0x1099bb,
-        resizeTo: pixiContainer.current,
-        autoDensity: true,
-        resolution: window.devicePixelRatio || 1,
-      });
-
-      if (!pixiContainer.current || !app) return;
-      pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
-
-      const world = new Container();
+        
+      if (!isMounted) {
+        app.destroy(true, {children: true, texture: true, baseTexture: true});
+        return;
+      }
+      canvasContainer.replaceChildren(app.canvas as HTMLCanvasElement);
+      
+      world = new Container();
       world.sortableChildren = true;
-      worldRef.current = world;
       
       const mapContainer = new Container();
       mapContainer.zIndex = 0;
@@ -231,13 +158,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         }
       }
 
-      const lobbyContainer = new Container();
-      lobbyRef.current = lobbyContainer;
+      lobby = new Container();
       
       const backgroundTexture = await Assets.load(lobbyImage.src);
       const background = new Sprite(backgroundTexture);
       background.anchor.set(0.5);
-      lobbyContainer.addChild(background);
+      lobby.addChild(background);
 
       const buttonGraphic = new Graphics();
       buttonGraphic.roundRect(0, 0, 220, 70, 15).fill({ color: 0xBF00FF, alpha: 0.8 });
@@ -245,7 +171,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
       const buttonText = new Text({
         text: 'ENTRAR',
-        style: { fill: 0xffffff, fontSize: 28, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 'bold' }
+        style: new TextStyle({ fill: 0xffffff, fontSize: 28, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 'bold' })
       });
       buttonText.anchor.set(0.5);
       buttonText.position.set(buttonGraphic.width / 2, buttonGraphic.height / 2);
@@ -254,27 +180,25 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       enterButton.addChild(buttonGraphic, buttonText);
       enterButton.eventMode = 'static';
       enterButton.cursor = 'pointer';
-      enterButton.on('pointertap', () => setGameStateRef.current('playing'));
-      lobbyContainer.addChild(enterButton);
-      
+      enterButton.on('pointertap', () => propsRef.current.setGameState('playing'));
+      lobby.addChild(enterButton);
+
       const resizeHandler = () => {
-        if (!app) return;
         const screenWidth = app.screen.width;
         const screenHeight = app.screen.height;
 
-        if (lobbyRef.current && background.texture.valid) {
-            const bg = background;
-            const bgRatio = bg.texture.width / bg.texture.height;
+        if (lobby && background.texture.valid) {
+            const bgRatio = background.texture.width / background.texture.height;
             const screenRatio = screenWidth / screenHeight;
             
             if (bgRatio > screenRatio) { 
-                bg.height = screenHeight;
-                bg.width = screenHeight * bgRatio;
+                background.height = screenHeight;
+                background.width = screenHeight * bgRatio;
             } else { 
-                bg.width = screenWidth;
-                bg.height = screenWidth / bgRatio;
+                background.width = screenWidth;
+                background.height = screenWidth / bgRatio;
             }
-            bg.position.set(screenWidth / 2, screenHeight / 2);
+            background.position.set(screenWidth / 2, screenHeight / 2);
 
             enterButton.position.set(
                 screenWidth / 2 - enterButton.width / 2,
@@ -282,68 +206,63 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             );
         }
         
-        if (worldRef.current) {
-            const worldContainer = worldRef.current;
+        if (world) {
             const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
             const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
-
             const scaleX = screenWidth / worldWidth;
             const scaleY = screenHeight / worldHeight;
-            const scale = Math.min(scaleX, scaleY); // Use Math.min to fit inside
-
-            worldContainer.scale.set(scale);
-            worldContainer.x = (screenWidth - (worldWidth * scale)) / 2;
-            worldContainer.y = (screenHeight - (worldHeight * scale)) / 2;
+            const scale = Math.min(scaleX, scaleY);
+            world.scale.set(scale);
+            world.x = (screenWidth - (worldWidth * scale)) / 2;
+            world.y = (screenHeight - (worldHeight * scale)) / 2;
         }
       };
 
       app.renderer.on('resize', resizeHandler);
       resizeHandler();
       
-      const indicator = new Graphics();
-      indicator.circle(0, 0, 20).stroke({ width: 2, color: 0xFFFF00, alpha: 0.8 });
-      indicator.visible = false;
-      indicator.zIndex = 2;
-      world.addChild(indicator);
-      npcProximityIndicatorRef.current = indicator;
-
+      npcProximityIndicator = new Graphics();
+      npcProximityIndicator.circle(0, 0, 20).stroke({ width: 2, color: 0xFFFF00, alpha: 0.8 });
+      npcProximityIndicator.visible = false;
+      npcProximityIndicator.zIndex = 2;
+      world.addChild(npcProximityIndicator);
+      
       const createNpc = async () => {
         const character = CHARACTERS_MAP[NPC.characterId];
         if (!character) return;
         
-        if (!loadedSheetsRef.current[NPC.characterId]) {
+        if (!loadedSheets[NPC.characterId]) {
             const baseTexture = await Assets.load<Texture>(character.png.src);
             const sheet = new Spritesheet(baseTexture, character.json);
             await sheet.parse();
-            loadedSheetsRef.current[NPC.characterId] = sheet;
+            loadedSheets[NPC.characterId] = sheet;
         }
         
-        const sheet = loadedSheetsRef.current[NPC.characterId];
-        const sprite: PlayerSprite = new AnimatedSprite(sheet.animations[`${NPC.direction}_walk`]);
-        sprite.characterId = NPC.characterId;
-        sprite.gotoAndStop(0);
-        sprite.anchor.set(0.5);
-        sprite.scale.set(0.5);
-        sprite.x = NPC.x;
-        sprite.y = NPC.y;
-        sprite.zIndex = 1;
+        const sheet = loadedSheets[NPC.characterId];
+        npcSprite = new AnimatedSprite(sheet.animations[`${NPC.direction}_walk`]);
+        npcSprite.characterId = NPC.characterId;
+        npcSprite.gotoAndStop(0);
+        npcSprite.anchor.set(0.5);
+        npcSprite.scale.set(0.5);
+        npcSprite.x = NPC.x;
+        npcSprite.y = NPC.y;
+        npcSprite.zIndex = 1;
 
         const text = new Text({
             text: NPC.name,
-            style: {
+            style: new TextStyle({
               fontFamily: 'Inter, sans-serif', fontSize: 12,
               fill: 0xffff00, stroke: { color: 0x000000, width: 3, join: 'round' },
               align: 'center',
-            }
+            })
         });
         text.anchor.set(0.5, 1);
-        text.x = sprite.x;
-        text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
+        text.x = npcSprite.x;
+        text.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - 5;
         text.zIndex = 2;
         
-        world.addChild(sprite, text);
-        npcSpriteRef.current = sprite;
-
+        world.addChild(npcSprite, text);
+        
         const bubbleContainer = new Container();
         bubbleContainer.zIndex = 3;
         bubbleContainer.visible = false;
@@ -352,265 +271,256 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         
         const bubbleText = new Text({
             text: '',
-            style: {
+            style: new TextStyle({
                 fontFamily: 'Inter, sans-serif',
                 fontSize: 14,
                 fill: 0xffffff,
                 wordWrap: true,
                 wordWrapWidth: 150,
-            }
+            })
         });
 
         bubbleContainer.addChild(backgroundGraphic, bubbleText);
         world.addChild(bubbleContainer);
-        npcChatBubbleRef.current = { container: bubbleContainer, text: bubbleText, background: backgroundGraphic };
+        npcChatBubble = { container: bubbleContainer, text: bubbleText, background: backgroundGraphic };
       }
       
       await createNpc();
-
-      app.ticker.add((ticker) => {
-        if (gameStateRef.current !== 'playing' || !app) return;
-        
-        const localPlayer = currentPlayerRef.current;
-        if (!localPlayer) return;
-        
-        const playerSprite = playerSpritesRef.current[localPlayer.uid];
-        if (!playerSprite || playerSprite.destroyed || !playerSprite.parent) {
-          return;
-        }
-        
-        const speed = 1.5;
-        let dx = 0;
-        let dy = 0;
-        
-        if (keysDown.current['w'] || keysDown.current['arrowup']) dy -= 1;
-        if (keysDown.current['s'] || keysDown.current['arrowdown']) dy += 1;
-        if (keysDown.current['a'] || keysDown.current['arrowleft']) dx -= 1;
-        if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
-        
-        let moved = false;
-        let newDirection: Player['direction'] = localPlayer.direction;
-        
-        const newPos = { x: playerSprite.x, y: playerSprite.y };
-
-        if (dx !== 0 || dy !== 0) {
-          moved = true;
-          if (dx !== 0 && dy !== 0) {
-            const magnitude = Math.sqrt(dx * dx + dy * dy);
-            dx = (dx / magnitude);
-            dy = (dy / magnitude);
-          }
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
       
-          const nextX = newPos.x + dx * speed;
-          if (!checkCollision(nextX, newPos.y)) {
-            newPos.x = nextX;
-          }
-          const nextY = newPos.y + dy * speed;
-          if (!checkCollision(newPos.x, nextY)) {
-            newPos.y = nextY;
-          }
+      // MAIN GAME LOOP
+      app.ticker.add(() => {
+        if (!isMounted) return;
+        const { gameState, currentPlayer, onlinePlayers, onProximityChange, npcMessage } = propsRef.current;
 
-          playerSprite.x = newPos.x;
-          playerSprite.y = newPos.y;
-      
-          if (Math.abs(dy) > Math.abs(dx)) {
-            newDirection = dy < 0 ? 'back' : 'front';
-          } else if (dx !== 0) {
-            newDirection = dx < 0 ? 'left' : 'right';
-          }
-          updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
-        }
-
+        // Switch between lobby and world
+        const isPlaying = gameState === 'playing';
+        if (world && world.visible !== isPlaying) world.visible = isPlaying;
+        if (lobby && lobby.visible === isPlaying) lobby.visible = !isPlaying;
+        if (!isPlaying || !world) return;
         
-        const sheet = loadedSheetsRef.current[localPlayer.characterId];
-        const newAnimationName = `${newDirection}_walk`;
+        // Player Movement Logic
+        const localPlayer = currentPlayer;
+        const playerSprite = playerSprites[localPlayer.uid];
+        if (playerSprite && playerSprite.parent) {
+            const speed = 2.5;
+            let dx = 0;
+            let dy = 0;
 
-        if (sheet && playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
-            playerSprite.textures = sheet.animations[newAnimationName];
-            playerSprite.currentAnimationName = newAnimationName;
-            playerSprite.animationSpeed = 0.15;
+            if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
+            if (keysDown['s'] || keysDown['arrowdown']) dy += 1;
+            if (keysDown['a'] || keysDown['arrowleft']) dx -= 1;
+            if (keysDown['d'] || keysDown['arrowright']) dx += 1;
+            
+            const moved = dx !== 0 || dy !== 0;
+            if (moved) {
+                let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as any || 'front';
+
+                const checkCollision = (x: number, y: number): boolean => {
+                    const playerWidth = 16 * 0.5;
+                    const playerHeight = 32 * 0.5; 
+                    const bounds = {
+                        left: x - playerWidth / 2,
+                        right: x + playerWidth / 2,
+                        bottom: y + playerHeight / 4,
+                    };
+                    const corners = [
+                        { x: bounds.left, y: bounds.bottom - playerHeight / 2 },
+                        { x: bounds.right, y: bounds.bottom - playerHeight / 2 },
+                        { x: bounds.left, y: bounds.bottom },
+                        { x: bounds.right, y: bounds.bottom },
+                    ];
+                    for (const corner of corners) {
+                        const tileX = Math.floor(corner.x / TILE_SIZE);
+                        const tileY = Math.floor(corner.y / TILE_SIZE);
+                        if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return true;
+                        const tileType = mapLayout[tileY]?.[tileX];
+                        if (tileType === 1 || tileType === 3) return true;
+                    }
+                    return false;
+                };
+
+                let targetX = playerSprite.x + dx * speed;
+                let targetY = playerSprite.y + dy * speed;
+
+                if (!checkCollision(targetX, playerSprite.y)) {
+                    playerSprite.x = targetX;
+                }
+                if (!checkCollision(playerSprite.x, targetY)) {
+                    playerSprite.y = targetY;
+                }
+                
+                if (Math.abs(dy) > Math.abs(dx)) newDirection = dy < 0 ? 'back' : 'front';
+                else if (dx !== 0) newDirection = dx < 0 ? 'left' : 'right';
+
+                updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+            }
+
+            const sheet = loadedSheets[localPlayer.characterId];
+            if(sheet){
+                const newDirection = (localPlayer.direction || 'front');
+                const newAnimationName = `${newDirection}_walk`;
+                if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
+                    playerSprite.textures = sheet.animations[newAnimationName];
+                    playerSprite.currentAnimationName = newAnimationName;
+                    playerSprite.animationSpeed = 0.15;
+                }
+                if (moved && !playerSprite.playing) playerSprite.play();
+                else if (!moved && playerSprite.playing) playerSprite.gotoAndStop(0);
+            }
         }
         
-        if (moved && !playerSprite.playing) {
-            playerSprite.play();
-        } else if (!moved && playerSprite.playing) {
-            playerSprite.gotoAndStop(0);
-        }
-
-        const playerText = playerTextRef.current[localPlayer.uid];
-        if (playerText && !playerText.destroyed) {
-          playerText.x = playerSprite.x;
-          playerText.y = playerSprite.y - (playerSprite.height * playerSprite.scale.y) - 5;
+        // Update all player visuals
+        const playersToRender = [currentPlayer, ...onlinePlayers];
+        const activePlayerIds = new Set(playersToRender.map(p => p.uid));
+        
+        // Remove disconnected players
+        for(const uid in playerSprites){
+            if(!activePlayerIds.has(uid)){
+                playerSprites[uid].destroy();
+                playerText[uid].destroy();
+                delete playerSprites[uid];
+                delete playerText[uid];
+            }
         }
         
-        if (npcSpriteRef.current && npcProximityIndicatorRef.current) {
-          const distance = Math.hypot(playerSprite.x - npcSpriteRef.current.x, playerSprite.y - npcSpriteRef.current.y);
-          const isNear = distance < PROXIMITY_RANGE;
-          
-          if (isNear !== proximityStateRef.current) {
-            proximityStateRef.current = isNear;
-            onProximityChangeRef.current(isNear);
-          }
-          
-          const indicator = npcProximityIndicatorRef.current;
-          indicator.visible = isNear;
-          if (isNear) {
-            indicator.x = npcSpriteRef.current.x;
-            indicator.y = npcSpriteRef.current.y - (npcSpriteRef.current.height * npcSpriteRef.current.scale.y) - 10;
-            const pulse = Math.sin(app.ticker.lastTime / 200) * 0.1 + 0.9;
-            indicator.scale.set(pulse);
-          }
+        // Add/Update players
+        playersToRender.forEach(async player => {
+            if(!player.characterId) return;
+            if(!loadedSheets[player.characterId]){
+                const character = CHARACTERS_MAP[player.characterId];
+                if(character){
+                    const baseTexture = await Assets.load<Texture>(character.png.src);
+                    const sheet = new Spritesheet(baseTexture, character.json);
+                    await sheet.parse();
+                    loadedSheets[player.characterId] = sheet;
+                }
+            }
+            const sheet = loadedSheets[player.characterId];
+            if(!sheet) return;
+
+            if(playerSprites[player.uid]){ // Update existing
+                const sprite = playerSprites[player.uid];
+                const text = playerText[player.uid];
+
+                if(sprite.characterId !== player.characterId) { // Character changed
+                    sprite.destroy();
+                    text.destroy();
+                    delete playerSprites[player.uid];
+                    delete playerText[player.uid];
+                } else {
+                    if(player.uid !== currentPlayer.uid){
+                        sprite.x = player.x;
+                        sprite.y = player.y;
+                    }
+                    const newAnim = `${player.direction || 'front'}_walk`;
+                    if(sprite.currentAnimationName !== newAnim) {
+                       sprite.textures = sheet.animations[newAnim];
+                       sprite.currentAnimationName = newAnim;
+                       sprite.gotoAndStop(0);
+                    }
+                    text.x = sprite.x;
+                    text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
+                    text.text = player.name;
+                }
+
+            } 
+            if(!playerSprites[player.uid]) { // Create new
+                const animationName = `${player.direction || 'front'}_walk`;
+                const sprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
+                sprite.characterId = player.characterId;
+                sprite.currentAnimationName = animationName;
+                sprite.animationSpeed = 0.15;
+                sprite.anchor.set(0.5);
+                sprite.scale.set(0.5);
+                sprite.x = player.x;
+                sprite.y = player.y;
+                sprite.zIndex = 1;
+                sprite.gotoAndStop(0);
+                world.addChild(sprite);
+                playerSprites[player.uid] = sprite;
+
+                const textObj = new Text({
+                    text: player.name || 'Player',
+                    style: new TextStyle({
+                        fontFamily: 'Inter, sans-serif', fontSize: 12,
+                        fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' },
+                        align: 'center',
+                    })
+                });
+                textObj.anchor.set(0.5, 1);
+                textObj.x = sprite.x;
+                textObj.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
+                textObj.zIndex = 2;
+                world.addChild(textObj);
+                playerText[player.uid] = textObj;
+            }
+        });
+        
+        // Proximity check logic
+        const pSprite = playerSprites[currentPlayer.uid];
+        if (pSprite && pSprite.parent && npcSprite && npcSprite.parent && npcProximityIndicator) {
+            const distance = Math.hypot(pSprite.x - npcSprite.x, pSprite.y - npcSprite.y);
+            const isNear = distance < PROXIMITY_RANGE;
+            if (isNear !== proximityState) {
+                proximityState = isNear;
+                onProximityChange(isNear);
+            }
+            npcProximityIndicator.visible = isNear;
+            if (isNear) {
+                npcProximityIndicator.x = npcSprite.x;
+                npcProximityIndicator.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - 10;
+                const pulse = Math.sin(app.ticker.lastTime / 200) * 0.1 + 0.9;
+                npcProximityIndicator.scale.set(pulse);
+            }
+        }
+        
+        // NPC Chat bubble logic
+        if (npcChatBubble && npcSprite) {
+            const bubble = npcChatBubble;
+            if (chatTimeout) {
+                clearTimeout(chatTimeout);
+                chatTimeout = null;
+            }
+            if (npcMessage) {
+                bubble.text.text = npcMessage;
+                const padding = 10;
+                const bubbleWidth = bubble.text.width + padding * 2;
+                const bubbleHeight = bubble.text.height + padding * 2;
+                bubble.background.clear().roundRect(0, 0, bubbleWidth, bubbleHeight, 8).fill({color: 0x000000, alpha: 0.7});
+                bubble.text.x = padding;
+                bubble.text.y = padding;
+                bubble.container.x = npcSprite.x - bubbleWidth / 2;
+                bubble.container.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - bubbleHeight - 5;
+                bubble.container.visible = true;
+
+                chatTimeout = setTimeout(() => {
+                    if (bubble) bubble.container.visible = false;
+                }, 5000);
+                 propsRef.current.npcMessage = null; // Consume the message
+            } else {
+                bubble.container.visible = false;
+            }
         }
       });
-      setPixiInitialized(true);
     };
     
-    initPixi();
+    init();
 
     return () => {
+      isMounted = false;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      
-      if (app) {
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
-        app = null;
-      }
-      appRef.current = null;
-      worldRef.current = null;
-      lobbyRef.current = null;
-      playerSpritesRef.current = {};
-      playerTextRef.current = {};
-      loadedSheetsRef.current = {};
-      npcSpriteRef.current = null;
-      npcProximityIndicatorRef.current = null;
-      npcChatBubbleRef.current = null;
-      if (chatTimeoutRef.current) {
-        clearTimeout(chatTimeoutRef.current);
-      }
+      if (chatTimeout) clearTimeout(chatTimeout);
+      // Safely destroy the app, which also destroys its children and textures.
+      app.destroy(true, { children: true, texture: true, baseTexture: true });
     };
-  }, []);
-
-  useEffect(() => {
-    if (!isPixiInitialized) return;
-    const app = appRef.current;
-    if (!app) return;
-
-    if (gameState === 'playing') {
-        if (lobbyRef.current?.parent) app.stage.removeChild(lobbyRef.current);
-        if (worldRef.current && !worldRef.current.parent) app.stage.addChild(worldRef.current);
-    } else {
-        if (worldRef.current?.parent) app.stage.removeChild(worldRef.current);
-        if (lobbyRef.current && !lobbyRef.current.parent) app.stage.addChild(lobbyRef.current);
-    }
-  }, [gameState, isPixiInitialized]);
-
-  useEffect(() => {
-    const world = worldRef.current;
-    if (!appRef.current || !world || !isPixiInitialized || gameState !== 'playing') return;
-
-    const loadAssetsAndPlayers = async () => {
-      const playersToRender = new Map<string, Player>();
-      playersToRender.set(currentPlayer.uid, currentPlayer);
-      onlinePlayers.forEach(p => playersToRender.set(p.uid, p));
-      
-      const allPlayers = Array.from(playersToRender.values());
-      const allPlayerIds = allPlayers.map(p => p.uid);
-      const characterIds = new Set(allPlayers.map(p => p.characterId).filter(Boolean));
-
-      for (const id of characterIds) {
-        if (!loadedSheetsRef.current[id] && CHARACTERS_MAP[id]) {
-            const character = CHARACTERS_MAP[id];
-            const baseTexture = await Assets.load<Texture>(character.png.src);
-            const sheet = new Spritesheet(baseTexture, character.json);
-            await sheet.parse();
-            loadedSheetsRef.current[id] = sheet;
-        }
-      }
-
-      Object.keys(playerSpritesRef.current).forEach(uid => {
-        if (!allPlayerIds.includes(uid)) {
-          playerSpritesRef.current[uid]?.destroy();
-          playerTextRef.current[uid]?.destroy();
-          delete playerSpritesRef.current[uid];
-          delete playerTextRef.current[uid];
-        }
-      });
-
-      for (const player of allPlayers) {
-        if (!player.characterId) continue;
-        const sheet = loadedSheetsRef.current[player.characterId];
-        if (!sheet) continue;
-
-        const isCurrentUser = player.uid === currentPlayer.uid;
-        const animationName = `${player.direction || 'front'}_walk`;
-
-        if (playerSpritesRef.current[player.uid]) {
-          const sprite = playerSpritesRef.current[player.uid];
-          const text = playerTextRef.current[player.uid];
-          
-          if(sprite.characterId !== player.characterId){
-             sprite.destroy();
-             if(text) text.destroy();
-             delete playerSpritesRef.current[player.uid];
-             delete playerTextRef.current[player.uid];
-          } else {
-             if (!isCurrentUser) {
-                sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : sprite.x;
-                sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : sprite.y;
-                if (sprite.currentAnimationName !== animationName && sheet.animations[animationName]) {
-                    sprite.textures = sheet.animations[animationName];
-                    sprite.currentAnimationName = animationName;
-                    sprite.gotoAndStop(0);
-                }
-             }
-             if(text) {
-                text.x = sprite.x;
-                text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
-                text.text = player.name || 'Player';
-             }
-          }
-        }
-
-        if (!playerSpritesRef.current[player.uid]) {
-          if(!sheet.animations[animationName]) continue;
-          
-          const sprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
-          sprite.characterId = player.characterId;
-          sprite.currentAnimationName = animationName;
-          sprite.animationSpeed = 0.15;
-          sprite.anchor.set(0.5);
-          sprite.scale.set(0.5);
-          sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 150;
-          sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 400;
-          sprite.zIndex = 1;
-          sprite.gotoAndStop(0);
-          
-          world.addChild(sprite);
-          playerSpritesRef.current[player.uid] = sprite;
-
-          const text = new Text({
-            text: player.name || 'Player',
-            style: {
-              fontFamily: 'Inter, sans-serif', fontSize: 12,
-              fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' },
-              align: 'center',
-            }
-          });
-          text.anchor.set(0.5, 1);
-          text.x = sprite.x;
-          text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
-          text.zIndex = 2;
-          world.addChild(text);
-          playerTextRef.current[player.uid] = text;
-        }
-      }
-    };
-    
-    loadAssetsAndPlayers();
-    
-  }, [onlinePlayers, currentPlayer, gameState, isPixiInitialized]);
+  }, []); // <-- Empty dependency array ensures this runs only once
 
   return <div ref={pixiContainer} className="w-full h-full" />;
 };
 
 export default PixiCanvas;
+
+    
