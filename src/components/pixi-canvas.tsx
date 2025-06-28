@@ -19,7 +19,7 @@ interface PixiCanvasProps {
 type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterId?: string; };
 
 // 0: Grass, 1: Wall, 2: Floor, 3: Desk
-const TILE_SIZE = 32;
+const TILE_SIZE = 16;
 const MAP_WIDTH_TILES = 40;
 const MAP_HEIGHT_TILES = 30;
 
@@ -89,7 +89,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
 
-    if ((data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y)))) {
+    if ((data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || 
+        (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y)))) {
+      console.error("Invalid coordinates detected. Aborting database update.", data);
       return;
     }
 
@@ -98,14 +100,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
   }, 100), []);
   
   const checkCollision = (x: number, y: number, width: number, height: number): boolean => {
-    const left = x - width / 2;
-    const right = x + width / 2;
-    const top = y - height / 2;
-    const bottom = y + height / 2;
-  
+    const characterBounds = {
+        left: x - (width / 4),
+        right: x + (width / 4),
+        top: y - (height / 8),
+        bottom: y + (height / 4),
+    };
+
     const corners = [
-      { x: left, y: top }, { x: right, y: top },
-      { x: left, y: bottom }, { x: right, y: bottom },
+        { x: characterBounds.left, y: characterBounds.top },
+        { x: characterBounds.right, y: characterBounds.top },
+        { x: characterBounds.left, y: characterBounds.bottom },
+        { x: characterBounds.right, y: characterBounds.bottom },
     ];
   
     for (const corner of corners) {
@@ -229,15 +235,13 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
         if (!playerSprite || playerSprite.destroyed) return;
         
-        if (isNaN(playerSprite.x) || isNaN(playerSprite.y)) {
-            playerSprite.x = localPlayer.x ?? 150;
-            playerSprite.y = localPlayer.y ?? 400;
-        }
+        if (isNaN(playerSprite.x)) playerSprite.x = 0;
+        if (isNaN(playerSprite.y)) playerSprite.y = 0;
 
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         if (!sheet) return;
         
-        const speed = 2.5;
+        const speed = 1.5;
         let dx = 0;
         let dy = 0;
 
@@ -249,39 +253,48 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         const oldX = playerSprite.x;
         const oldY = playerSprite.y;
         
-        let newX = playerSprite.x + dx * speed * time.deltaTime;
-        let newY = playerSprite.y + dy * speed * time.deltaTime;
-        
-        if (checkCollision(newX, playerSprite.y, playerSprite.width, playerSprite.height)) {
-          newX = playerSprite.x;
-        }
-        if (checkCollision(playerSprite.x, newY, playerSprite.width, playerSprite.height)) {
-          newY = playerSprite.y;
-        }
-        playerSprite.x = newX;
-        playerSprite.y = newY;
+        if (dx !== 0 || dy !== 0) {
+            const magnitude = Math.sqrt(dx * dx + dy * dy);
+            const normalizedDx = dx / magnitude;
+            const normalizedDy = dy / magnitude;
+            
+            const moveX = normalizedDx * speed * time.deltaTime;
+            const moveY = normalizedDy * speed * time.deltaTime;
 
+            const targetX = playerSprite.x + moveX;
+            const targetY = playerSprite.y + moveY;
+
+            // Check X axis
+            if (!checkCollision(targetX, oldY, playerSprite.width, playerSprite.height)) {
+                playerSprite.x = targetX;
+            }
+    
+            // Check Y axis, using the potentially new X to prevent clipping corners
+            if (!checkCollision(playerSprite.x, targetY, playerSprite.width, playerSprite.height)) {
+                playerSprite.y = targetY;
+            }
+        }
 
         const moved = playerSprite.x !== oldX || playerSprite.y !== oldY;
-        let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as Player['direction'] || 'front';
+        let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as Player['direction']) || 'front';
 
         if (moved) {
-          if (dy < 0 && Math.abs(playerSprite.y - oldY) > Math.abs(playerSprite.x - oldX)) { newDirection = 'back'; }
-          else if (dy > 0 && Math.abs(playerSprite.y - oldY) > Math.abs(playerSprite.x - oldX)) { newDirection = 'front'; }
-          else if (dx < 0) { newDirection = 'left'; }
-          else if (dx > 0) { newDirection = 'right'; }
+          if (Math.abs(dy) > Math.abs(dx)) {
+            newDirection = dy < 0 ? 'back' : 'front';
+          } else if (dx !== 0) {
+            newDirection = dx < 0 ? 'left' : 'right';
+          }
             
           if (!isNaN(playerSprite.x) && !isNaN(playerSprite.y)) {
             updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
           }
         }
         
-        const newAnimationName = `${newDirection}_walk`;
-        if (playerSprite.currentAnimationName !== newAnimationName) {
-            if(sheet.animations[newAnimationName]) {
-                playerSprite.textures = sheet.animations[newAnimationName];
-                playerSprite.currentAnimationName = newAnimationName;
-            }
+        const newAnimationName = moved ? `${newDirection}_walk` : playerSprite.currentAnimationName;
+        if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName || '']) {
+            playerSprite.textures = sheet.animations[newAnimationName || 'front_walk'];
+            playerSprite.currentAnimationName = newAnimationName;
+            playerSprite.animationSpeed = 0.15;
         }
         
         if (moved && !playerSprite.playing) {
@@ -291,9 +304,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         }
 
         const playerText = playerTextRef.current[localPlayer.uid];
-        if (playerText) {
+        if (playerText && !playerText.destroyed) {
           playerText.x = playerSprite.x;
-          playerText.y = playerSprite.y - playerSprite.height - 5;
+          playerText.y = playerSprite.y - (playerSprite.height * sprite.scale.y) - 5;
+        }
+        
+        if (world) {
+            world.x = app.screen.width / 2 - playerSprite.x;
+            world.y = app.screen.height / 2 - playerSprite.y;
         }
       });
       setPixiInitialized(true);
@@ -309,7 +327,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         appRef.current = null;
       }
     };
-  }, []);
+  }, [setGameState]);
 
   useEffect(() => {
     if (!isPixiInitialized) return;
@@ -404,7 +422,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
                 }
              }
              text.x = sprite.x;
-             text.y = sprite.y - sprite.height - 5;
+             text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
              text.text = player.name || 'Player';
           }
         }
@@ -417,7 +435,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
           sprite.currentAnimationName = animationName;
           sprite.animationSpeed = 0.15;
           sprite.anchor.set(0.5);
-          sprite.scale.set(0.75);
+          sprite.scale.set(0.5);
           sprite.x = (typeof player.x === 'number' && !isNaN(player.x)) ? player.x : 150;
           sprite.y = (typeof player.y === 'number' && !isNaN(player.y)) ? player.y : 400;
           sprite.zIndex = 1;
@@ -436,7 +454,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
           });
           text.anchor.set(0.5, 1);
           text.x = sprite.x;
-          text.y = sprite.y - sprite.height - 5;
+          text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
           text.zIndex = 2;
           world.addChild(text);
           playerTextRef.current[player.uid] = text;
