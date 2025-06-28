@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useRef, useEffect, useLayoutEffect } from 'react';
@@ -81,15 +80,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
   });
 
   useEffect(() => {
-    // This effect hook will run only once on mount, and its cleanup will run on unmount.
-    // This is the core of the stable architecture.
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement || appRef.current) {
-        // If the container isn't ready, or the app is already initialized, abort.
         return;
     }
     
-    // Create the app instance synchronously.
     const app = new Application();
     
     let tickerCallback: (() => void) | undefined;
@@ -97,7 +92,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
         
-    // --- Start of async initialization ---
     const init = async () => {
       try {
         await app.init({
@@ -107,14 +101,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             resolution: window.devicePixelRatio || 1,
         });
 
-        // CRITICAL CHECK: After an async operation, confirm the component is still mounted.
         if (!pixiContainerRef.current) {
             app.destroy(true, true);
             return;
         }
 
         pixiElement.appendChild(app.view);
-        appRef.current = app; // Assign to ref ONLY after successful async init.
+        appRef.current = app;
         
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
@@ -122,6 +115,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         const playerSprites: Record<string, PlayerSprite> = {};
         const playerText: Record<string, Text> = {};
         const loadedSheets: Record<string, Spritesheet> = {};
+        const loadingSheets: Record<string, boolean> = {};
         
         const world = new Container();
         world.sortableChildren = true;
@@ -243,8 +237,96 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             }
             return false;
         };
+        
+        const updatePlayerSprites = (allPlayers: Player[], currentUserId?: string) => {
+            const activePlayerIds = new Set(allPlayers.map(p => p.uid));
+    
+            for(const uid in playerSprites){
+                if(!activePlayerIds.has(uid)){
+                    if (playerSprites[uid]) playerSprites[uid].destroy();
+                    if (playerText[uid]) playerText[uid].destroy();
+                    delete playerSprites[uid];
+                    delete playerText[uid];
+                }
+            }
+            
+            for (const player of allPlayers) {
+                if(!player.characterId || !player.uid || player.x === undefined || player.y === undefined) continue;
+        
+                if(!loadedSheets[player.characterId]){
+                    if (!loadingSheets[player.characterId]) {
+                        loadingSheets[player.characterId] = true;
+                        const character = CHARACTERS_MAP[player.characterId];
+                        if (character) {
+                            (async () => {
+                                try {
+                                    const baseTexture = await Assets.load<Texture>(character.png.src);
+                                    if (!pixiContainerRef.current) return;
+                                    const sheet = new Spritesheet(baseTexture, character.json);
+                                    await sheet.parse();
+                                    loadedSheets[player.characterId] = sheet;
+                                } catch(e) {
+                                    console.error(`Failed to load character sheet for ${player.characterId}`, e);
+                                    delete loadingSheets[player.characterId];
+                                }
+                            })();
+                        }
+                    }
+                    continue; 
+                }
+                
+                const sheet = loadedSheets[player.characterId];
+                let sprite = playerSprites[player.uid];
+                let text = playerText[player.uid];
+        
+                if(sprite){
+                    if(sprite.characterId !== player.characterId) {
+                        sprite.destroy();
+                        if (text) text.destroy();
+                        delete playerSprites[player.uid];
+                        delete playerText[player.uid];
+                        sprite = undefined;
+                    } else if (player.uid !== currentUserId) {
+                        sprite.x = player.x;
+                        sprite.y = player.y;
+                        const newAnim = `${player.direction || 'front'}_walk`;
+                        if(sprite.currentAnimationName !== newAnim && sheet.animations[newAnim]) {
+                           sprite.textures = sheet.animations[newAnim];
+                           sprite.currentAnimationName = newAnim;
+                           sprite.gotoAndStop(0);
+                        }
+                    }
+                } 
+                
+                if(!sprite) {
+                    const animationName = `${player.direction || 'front'}_walk`;
+                    const newSprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
+                    newSprite.characterId = player.characterId;
+                    newSprite.currentAnimationName = animationName;
+                    newSprite.animationSpeed = 0.15;
+                    newSprite.anchor.set(0.5);
+                    newSprite.scale.set(0.5);
+                    newSprite.x = player.x;
+                    newSprite.y = player.y;
+                    world.addChild(newSprite);
+                    playerSprites[player.uid] = newSprite;
+        
+                    const newText = new Text({
+                        text: player.name || 'Player',
+                        style: new TextStyle({
+                            fontFamily: 'Inter, sans-serif', fontSize: 12,
+                            fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' },
+                            align: 'center',
+                        })
+                    });
+                    newText.anchor.set(0.5, 1);
+                    world.addChild(newText);
+                    playerText[player.uid] = newText;
+                }
+            }
+        };
 
-        const npcSprite = await createNpcSprite(world, loadedSheets);
+        const npcSprite = await createNpcSprite(world, loadedSheets, loadingSheets);
         if (!pixiContainerRef.current) { app.destroy(true, true); return; }
         
         const npcProximityIndicator = createNpcProximityIndicator(world);
@@ -252,9 +334,14 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
         tickerCallback = () => {
             if (app.destroyed) return;
-            const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
+            const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
-            if (currentGameState !== 'playing' || !localPlayer) return;
+            
+            const allPlayers = localPlayer ? [localPlayer, ...onlinePlayers] : onlinePlayers;
+            updatePlayerSprites(allPlayers, localPlayer?.uid);
+
+            if (gameState !== 'playing' || !localPlayer) return;
+
             const playerSprite = playerSprites[localPlayer.uid];
             if (!playerSprite || !playerSprite.parent) return;
 
@@ -265,11 +352,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             if (keysDown['a'] || keysDown['arrowleft']) dx -= 1;
             if (keysDown['d'] || keysDown['arrowright']) dx += 1;
             
-            let newDirection: Player['direction'] = localPlayer.direction;
+            let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as any || 'front';
             let moved = false;
             const targetX = playerSprite.x + dx * speed;
             const targetY = playerSprite.y + dy * speed;
-            if (targetX !== playerSprite.x || targetY !== playerSprite.y) {
+            if (dx !== 0 || dy !== 0) {
                 let canMoveX = !checkCollision(targetX, playerSprite.y);
                 let canMoveY = !checkCollision(playerSprite.x, targetY);
                 if (canMoveX && canMoveY && !checkCollision(targetX, targetY)) {
@@ -280,6 +367,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                     playerSprite.y = targetY; moved = true;
                 }
             }
+
             if (moved) {
                 if (dy < 0) newDirection = 'back'; else if (dy > 0) newDirection = 'front';
                 if (dx < 0) newDirection = 'left'; else if (dx > 0) newDirection = 'right';
@@ -290,23 +378,33 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                     if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
                         playerSprite.textures = sheet.animations[newAnimationName];
                         playerSprite.currentAnimationName = newAnimationName;
-                        playerSprite.animationSpeed = 0.15;
                     }
-                    if (!playerSprite.playing) playerSprite.play();
+                    if (!playerSprite.playing) {
+                        playerSprite.animationSpeed = 0.15;
+                        playerSprite.play();
+                    }
                 }
             } else {
                 if (playerSprite.playing) playerSprite.gotoAndStop(0);
             }
             
-            updatePlayerSprites(world, [localPlayer, ...currentOnlinePlayers], playerSprites, playerText, loadedSheets, localPlayer.uid);
+            for (const uid in playerSprites) {
+              const sprite = playerSprites[uid];
+              const text = playerText[uid];
+              if (sprite && text) {
+                text.x = sprite.x;
+                text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
+                sprite.zIndex = sprite.y;
+              }
+            }
+            world.sortChildren();
             
-            if (playerSprites[localPlayer.uid] && npcSprite) {
-                const pSprite = playerSprites[localPlayer.uid];
-                const distance = Math.hypot(pSprite.x - npcSprite.x, pSprite.y - npcSprite.y);
+            if (npcSprite) {
+                const distance = Math.hypot(playerSprite.x - npcSprite.x, playerSprite.y - npcSprite.y);
                 const isNear = distance < PROXIMITY_RANGE;
                 if (isNear !== proximityState) {
                     proximityState = isNear;
-                    currentOnProximityChange(isNear);
+                    onProximityChange(isNear);
                 }
                 npcProximityIndicator.visible = isNear;
                 if (isNear) {
@@ -322,7 +420,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
       } catch (error) {
         console.error("Error during Pixi initialization:", error);
-        // If init fails, ensure we clean up the partially created app
         if (!app.destroyed) {
             app.destroy(true, true);
         }
@@ -332,19 +429,15 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     
     init();
 
-    // --- Start of cleanup logic ---
     return () => {
-      // This function is guaranteed to run on unmount.
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
 
       const appToDestroy = appRef.current;
       if (appToDestroy) {
-        if (tickerCallback) {
-            appToDestroy.ticker.remove(tickerCallback);
+        if (!appToDestroy.destroyed) {
+            appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
         }
-        // destroy() is safe to call even if already destroyed
-        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
       }
       appRef.current = null;
     };
@@ -353,11 +446,12 @@ const PixiCanvas = (props: PixiCanvasProps) => {
   return <div ref={pixiContainerRef} className="w-full h-full" />;
 };
 
-async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>) {
+async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
     const character = CHARACTERS_MAP[NPC.characterId];
     if (!character) return null;
-    
-    if (!loadedSheets[NPC.characterId]) {
+
+    if (!loadedSheets[NPC.characterId] && !loadingSheets[NPC.characterId]) {
+        loadingSheets[NPC.characterId] = true;
         try {
             const baseTexture = await Assets.load<Texture>(character.png.src);
             const sheet = new Spritesheet(baseTexture, character.json);
@@ -365,11 +459,14 @@ async function createNpcSprite(world: Container, loadedSheets: Record<string, Sp
             loadedSheets[NPC.characterId] = sheet;
         } catch(e) {
             console.error(`Failed to load character sheet for ${NPC.characterId}`, e);
+            delete loadingSheets[NPC.characterId];
             return null;
         }
     }
     
     const sheet = loadedSheets[NPC.characterId];
+    if (!sheet) return null; // Still loading
+
     const npcSprite = new AnimatedSprite(sheet.animations[`${NPC.direction}_walk`]);
     npcSprite.characterId = NPC.characterId;
     npcSprite.gotoAndStop(0);
@@ -377,7 +474,7 @@ async function createNpcSprite(world: Container, loadedSheets: Record<string, Sp
     npcSprite.scale.set(0.5);
     npcSprite.x = NPC.x;
     npcSprite.y = NPC.y;
-    npcSprite.zIndex = 1;
+    npcSprite.zIndex = NPC.y;
 
     const text = new Text({
         text: NPC.name,
@@ -390,7 +487,7 @@ async function createNpcSprite(world: Container, loadedSheets: Record<string, Sp
     text.anchor.set(0.5, 1);
     text.x = npcSprite.x;
     text.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - 5;
-    text.zIndex = 2;
+    text.zIndex = npcSprite.zIndex + 1;
     
     world.addChild(npcSprite, text);
     return npcSprite;
@@ -400,101 +497,9 @@ function createNpcProximityIndicator(world: Container) {
     const indicator = new Graphics();
     indicator.circle(0, 0, 20).stroke({ width: 2, color: 0xFFFF00, alpha: 0.8 });
     indicator.visible = false;
-    indicator.zIndex = 2;
+    indicator.zIndex = 9999;
     world.addChild(indicator);
     return indicator;
-}
-
-async function updatePlayerSprites(world: Container, players: Player[], playerSprites: Record<string, PlayerSprite>, playerText: Record<string, Text>, loadedSheets: Record<string, Spritesheet>, currentUserId: string) {
-    const activePlayerIds = new Set(players.map(p => p.uid));
-    
-    for(const uid in playerSprites){
-        if(!activePlayerIds.has(uid)){
-            if (playerSprites[uid]) playerSprites[uid].destroy();
-            if (playerText[uid]) playerText[uid].destroy();
-            delete playerSprites[uid];
-            delete playerText[uid];
-        }
-    }
-    
-    for (const player of players) {
-        if(!player.characterId || !player.uid || !player.x || !player.y) continue;
-
-        if(!loadedSheets[player.characterId]){
-            const character = CHARACTERS_MAP[player.characterId];
-            if(character){
-                try {
-                    const baseTexture = await Assets.load<Texture>(character.png.src);
-                    const sheet = new Spritesheet(baseTexture, character.json);
-                    await sheet.parse();
-                    loadedSheets[player.characterId] = sheet;
-                } catch(e) {
-                    console.error(`Failed to load character sheet for ${player.characterId}`, e);
-                    continue;
-                }
-            }
-        }
-        const sheet = loadedSheets[player.characterId];
-        if(!sheet) continue;
-
-        if(playerSprites[player.uid]){
-            const sprite = playerSprites[player.uid];
-            const text = playerText[player.uid];
-
-            if(sprite.characterId !== player.characterId) {
-                sprite.destroy();
-                text.destroy();
-                delete playerSprites[player.uid];
-                delete playerText[player.uid];
-            } else {
-                if(player.uid !== currentUserId){
-                    sprite.x = player.x;
-                    sprite.y = player.y;
-                }
-                const newAnim = `${player.direction || 'front'}_walk`;
-                if(sprite.currentAnimationName !== newAnim && sheet.animations[newAnim]) {
-                   sprite.textures = sheet.animations[newAnim];
-                   sprite.currentAnimationName = newAnim;
-                   sprite.gotoAndStop(0);
-                }
-                text.x = sprite.x;
-                text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
-                if (text.text !== player.name) {
-                    text.text = player.name;
-                }
-            }
-        } 
-        if(!playerSprites[player.uid]) {
-            const animationName = `${player.direction || 'front'}_walk`;
-            const sprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
-            sprite.characterId = player.characterId;
-            sprite.currentAnimationName = animationName;
-            sprite.animationSpeed = 0.15;
-            sprite.anchor.set(0.5);
-            sprite.scale.set(0.5);
-            sprite.x = player.x;
-            sprite.y = player.y;
-            sprite.zIndex = 1;
-            sprite.gotoAndStop(0);
-            world.addChild(sprite);
-            playerSprites[player.uid] = sprite;
-
-            const textObj = new Text({
-                text: player.name || 'Player',
-                style: new TextStyle({
-                    fontFamily: 'Inter, sans-serif', fontSize: 12,
-                    fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' },
-                    align: 'center',
-                })
-            });
-            textObj.anchor.set(0.5, 1);
-            textObj.x = sprite.x;
-            textObj.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
-            textObj.zIndex = 2;
-            world.addChild(textObj);
-            playerText[player.uid] = textObj;
-        }
-    }
 }
 
 export default PixiCanvas;
