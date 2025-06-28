@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -45,9 +45,20 @@ export default function GameClient() {
   const [gameState, setGameState] = useState<'lobby' | 'playing'>('lobby');
 
   const [isNearNpc, setIsNearNpc] = useState(false);
+  
+  // Chat state
+  const [chatInput, setChatInput] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [npcMessage, setNpcMessage] = useState<string | null>(null);
+
+  // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
-  const mediaStreamRef = React.useRef<MediaStream | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioPlayerRef = useRef<HTMLAudioElement>(null);
+
 
   useEffect(() => {
     if (!loading && !user) {
@@ -75,11 +86,19 @@ export default function GameClient() {
     return () => unsubscribe();
   }, [user]);
 
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    setNpcMessage(chatInput);
+    setChatInput('');
+    setIsChatOpen(false);
+    
+    setTimeout(() => setNpcMessage(null), 5000); // Hide message after 5 seconds
+  };
+
   const handleVoiceChatClick = async () => {
     if (isRecording) {
-      mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-      setIsRecording(false);
+      mediaRecorderRef.current?.stop();
       return;
     }
 
@@ -96,7 +115,33 @@ export default function GameClient() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
       setHasMicPermission(true);
+      
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.src = audioUrl;
+          audioPlayerRef.current.play();
+        }
+        setNpcMessage("Listen to your beautiful voice!");
+        setTimeout(() => setNpcMessage(null), 5000);
+
+        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+        setIsRecording(false);
+      };
+
+      recorder.start();
       setIsRecording(true);
+
     } catch (error) {
       console.error('Error accessing microphone:', error);
       setHasMicPermission(false);
@@ -171,18 +216,19 @@ export default function GameClient() {
                     gameState={gameState}
                     setGameState={setGameState}
                     onProximityChange={setIsNearNpc}
+                    npcMessage={npcMessage}
                 />
 
                 <footer className="absolute bottom-0 left-1/2 -translate-x-1/2 z-10 p-4">
                     <div className="flex items-center gap-2 rounded-full bg-card/50 px-4 py-2 border border-border backdrop-blur-sm">
-                        <Popover>
+                        <Popover open={isChatOpen} onOpenChange={setIsChatOpen}>
                             <PopoverTrigger asChild>
-                                <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'}>
+                                <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={() => setIsChatOpen(true)}>
                                     <MessageSquare/>
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-80 mb-2">
-                            <div className="grid gap-4">
+                                <form onSubmit={handleSendMessage} className="grid gap-4">
                                     <div className="space-y-2">
                                         <h4 className="font-medium leading-none">Chat with Quest Giver</h4>
                                         <p className="text-sm text-muted-foreground">
@@ -190,10 +236,14 @@ export default function GameClient() {
                                         </p>
                                     </div>
                                     <div className="grid gap-2">
-                                        <Input placeholder="Hello there!" />
-                                        <Button>Send</Button>
+                                        <Input 
+                                            placeholder="Hello there!" 
+                                            value={chatInput} 
+                                            onChange={(e) => setChatInput(e.target.value)} 
+                                        />
+                                        <Button type="submit">Send</Button>
                                     </div>
-                                </div>
+                                </form>
                             </PopoverContent>
                         </Popover>
                         <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={handleVoiceChatClick}>
@@ -217,6 +267,7 @@ export default function GameClient() {
           currentPlayer={player}
         />
       )}
+      <audio ref={audioPlayerRef} className="hidden" />
     </>
   );
 }

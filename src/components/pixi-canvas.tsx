@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture } from 'pixi.js';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
@@ -16,6 +16,7 @@ interface PixiCanvasProps {
   gameState: 'lobby' | 'playing';
   setGameState: (state: 'lobby' | 'playing') => void;
   onProximityChange: (isNear: boolean) => void;
+  npcMessage: string | null;
 }
 
 type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterId?: string; };
@@ -71,7 +72,7 @@ const NPC = {
 
 const PROXIMITY_RANGE = 50;
 
-const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
+const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange, npcMessage }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
@@ -87,6 +88,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   const proximityStateRef = useRef(false);
   const npcSpriteRef = useRef<PlayerSprite | null>(null);
   const npcProximityIndicatorRef = useRef<Graphics | null>(null);
+  const npcChatBubbleRef = useRef<{ container: Container, text: Text, background: Graphics } | null>(null);
+  const chatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
 
   const onProximityChangeRef = useRef(onProximityChange);
   useEffect(() => {
@@ -96,6 +100,45 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
   useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
+  useEffect(() => {
+    if (!isPixiInitialized || !npcChatBubbleRef.current || !npcSpriteRef.current) return;
+    
+    const bubble = npcChatBubbleRef.current;
+    const sprite = npcSpriteRef.current;
+    
+    if (chatTimeoutRef.current) {
+      clearTimeout(chatTimeoutRef.current);
+    }
+    
+    if (npcMessage) {
+      bubble.text.text = npcMessage;
+      
+      const textMetrics = Text.measureText({text: npcMessage, style: bubble.text.style as TextStyle});
+      const padding = 10;
+      const bubbleWidth = textMetrics.width + padding * 2;
+      const bubbleHeight = textMetrics.height + padding * 2;
+
+      bubble.background.clear();
+      bubble.background.roundRect(0, 0, bubbleWidth, bubbleHeight, 8).fill({color: 0x000000, alpha: 0.7});
+      
+      bubble.text.x = padding;
+      bubble.text.y = padding;
+      
+      bubble.container.x = sprite.x - bubbleWidth / 2;
+      bubble.container.y = sprite.y - (sprite.height * sprite.scale.y) - bubbleHeight - 5;
+      bubble.container.visible = true;
+      
+      chatTimeoutRef.current = setTimeout(() => {
+        if (bubble) bubble.container.visible = false;
+        chatTimeoutRef.current = null;
+      }, 5000);
+    } else {
+      bubble.container.visible = false;
+    }
+
+  }, [npcMessage, isPixiInitialized]);
+
 
   const updatePlayerInDb = useCallback(throttle(async (data: Partial<Player>) => {
     const localPlayer = currentPlayerRef.current;
@@ -219,12 +262,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             const bgRatio = bg.texture.width / bg.texture.height;
             const screenRatio = screenWidth / screenHeight;
             
-            if (bgRatio > screenRatio) { // background is wider than screen
-                bg.width = screenWidth;
-                bg.height = screenWidth / bgRatio;
-            } else { // background is taller than screen
+            if (bgRatio > screenRatio) { 
                 bg.height = screenHeight;
                 bg.width = screenHeight * bgRatio;
+            } else { 
+                bg.width = screenWidth;
+                bg.height = screenWidth / bgRatio;
             }
             bg.position.set(screenWidth / 2, screenHeight / 2);
 
@@ -241,7 +284,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
             const scaleX = screenWidth / worldWidth;
             const scaleY = screenHeight / worldHeight;
-            const scale = Math.max(2, Math.min(scaleX, scaleY)); // Add a minimum scale
+            const scale = Math.min(scaleX, scaleY);
 
             worldContainer.scale.set(scale);
             worldContainer.x = (screenWidth - (worldWidth * scale)) / 2;
@@ -295,6 +338,28 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         
         world.addChild(sprite, text);
         npcSpriteRef.current = sprite;
+
+        // Chat bubble
+        const bubbleContainer = new Container();
+        bubbleContainer.zIndex = 3;
+        bubbleContainer.visible = false;
+
+        const background = new Graphics();
+        
+        const bubbleText = new Text({
+            text: '',
+            style: {
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 14,
+                fill: 0xffffff,
+                wordWrap: true,
+                wordWrapWidth: 150,
+            }
+        });
+
+        bubbleContainer.addChild(background, bubbleText);
+        world.addChild(bubbleContainer);
+        npcChatBubbleRef.current = { container: bubbleContainer, text: bubbleText, background };
       }
       
       await createNpc();
@@ -329,7 +394,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
           const nextX = playerSprite.x + normalizedDx * speed;
           const nextY = playerSprite.y + normalizedDy * speed;
 
-          // Check X and Y axis separately for wall sliding
           if (dx !== 0 && !checkCollision(nextX, playerSprite.y)) {
               playerSprite.x = nextX;
               moved = true;
