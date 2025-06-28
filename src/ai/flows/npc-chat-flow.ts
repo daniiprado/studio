@@ -10,7 +10,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'zod';
 
-export const NpcChatInputSchema = z.object({
+const NpcChatInputSchema = z.object({
   message: z.string().optional().describe('A text message from the player.'),
   audioDataUri: z.string().optional().describe(
       "An audio recording from the player, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
@@ -18,7 +18,7 @@ export const NpcChatInputSchema = z.object({
 });
 export type NpcChatInput = z.infer<typeof NpcChatInputSchema>;
 
-export const NpcChatOutputSchema = z.object({
+const NpcChatOutputSchema = z.object({
   response: z.string().describe("The NPC's response to the player."),
 });
 export type NpcChatOutput = z.infer<typeof NpcChatOutputSchema>;
