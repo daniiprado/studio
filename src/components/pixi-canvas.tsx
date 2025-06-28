@@ -218,19 +218,21 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
         // Lobby view
         if (lobbyRef.current && background.texture.valid) {
+            const bg = background;
+            const bgRatio = bg.texture.width / bg.texture.height;
             const screenRatio = screenWidth / screenHeight;
-            const bgRatio = background.texture.width / background.texture.height;
-
-            if (screenRatio > bgRatio) {
-                background.height = screenHeight;
-                background.width = screenHeight * bgRatio;
+            
+            // "Contain" logic to ensure the whole image is visible
+            if (bgRatio > screenRatio) {
+                bg.width = screenWidth;
+                bg.height = screenWidth / bgRatio;
             } else {
-                background.width = screenWidth;
-                background.height = screenWidth / bgRatio;
+                bg.height = screenHeight;
+                bg.width = screenHeight * bgRatio;
             }
+            bg.position.set(screenWidth / 2, screenHeight / 2);
 
-            background.position.set(screenWidth / 2, screenHeight / 2);
-
+            // Center button on screen
             enterButton.position.set(
                 screenWidth / 2 - enterButton.width / 2,
                 screenHeight / 2 - enterButton.height / 2
@@ -243,7 +245,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
             const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
 
-            const scale = Math.min(screenWidth / worldWidth, screenHeight / worldHeight);
+            // "Cover" logic to fill the screen with the map
+            const scaleX = screenWidth / worldWidth;
+            const scaleY = screenHeight / worldHeight;
+            const scale = Math.max(scaleX, scaleY); 
 
             worldContainer.scale.set(scale);
             worldContainer.x = (screenWidth - (worldWidth * scale)) / 2;
@@ -396,7 +401,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         appRef.current = null;
       }
     };
-  }, [setGameState]);
+  }, [setGameState, updatePlayerInDb]);
 
   useEffect(() => {
     if (!isPixiInitialized) return;
