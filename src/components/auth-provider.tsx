@@ -35,8 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const handleUserDocument = useCallback(async (firebaseUser: User) => {
     const playerRef = ref(rtdb, `players/${firebaseUser.uid}`);
     const playerSnapshot = await get(playerRef);
-    const initialX = 150;
-    const initialY = 400;
+    const initialX = 312;
+    const initialY = 424;
 
     // Set up onDisconnect to mark user as offline and update last active time
     onDisconnect(playerRef).update({ isOnline: false, lastActive: serverTimestamp() });

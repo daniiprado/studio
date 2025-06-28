@@ -219,10 +219,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             const bgRatio = bg.texture.width / bg.texture.height;
             const screenRatio = screenWidth / screenHeight;
             
-            if (bgRatio > screenRatio) {
+            if (bgRatio > screenRatio) { // background is wider than screen
                 bg.width = screenWidth;
                 bg.height = screenWidth / bgRatio;
-            } else {
+            } else { // background is taller than screen
                 bg.height = screenHeight;
                 bg.width = screenHeight * bgRatio;
             }
@@ -241,7 +241,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
             const scaleX = screenWidth / worldWidth;
             const scaleY = screenHeight / worldHeight;
-            const scale = Math.max(scaleX, scaleY); 
+            const scale = Math.max(2, Math.min(scaleX, scaleY)); // Add a minimum scale
 
             worldContainer.scale.set(scale);
             worldContainer.x = (screenWidth - (worldWidth * scale)) / 2;
@@ -317,33 +317,37 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         if (keysDown.current['s'] || keysDown.current['arrowdown']) dy += 1;
         if (keysDown.current['a'] || keysDown.current['arrowleft']) dx -= 1;
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
-
-        let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as Player['direction']) || 'front';
+        
         let moved = false;
+        let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as Player['direction']) || 'front';
 
         if (dx !== 0 || dy !== 0) {
-            moved = true;
-            const magnitude = Math.sqrt(dx * dx + dy * dy);
-            const normalizedDx = dx / magnitude;
-            const normalizedDy = dy / magnitude;
-            
-            const targetX = playerSprite.x + normalizedDx * speed;
-            const targetY = playerSprite.y + normalizedDy * speed;
+          const magnitude = Math.sqrt(dx * dx + dy * dy);
+          const normalizedDx = dx / magnitude;
+          const normalizedDy = dy / magnitude;
+          
+          const nextX = playerSprite.x + normalizedDx * speed;
+          const nextY = playerSprite.y + normalizedDy * speed;
 
-            if (!checkCollision(targetX, targetY)) {
-                playerSprite.x = targetX;
-                playerSprite.y = targetY;
-            } else {
-                moved = false; // Don't animate if blocked
-            }
+          // Check X and Y axis separately for wall sliding
+          if (dx !== 0 && !checkCollision(nextX, playerSprite.y)) {
+              playerSprite.x = nextX;
+              moved = true;
+          }
 
+          if (dy !== 0 && !checkCollision(playerSprite.x, nextY)) {
+              playerSprite.y = nextY;
+              moved = true;
+          }
+
+          if (moved) {
             if (Math.abs(dy) > Math.abs(dx)) {
-                newDirection = dy < 0 ? 'back' : 'front';
+              newDirection = dy < 0 ? 'back' : 'front';
             } else if (dx !== 0) {
-                newDirection = dx < 0 ? 'left' : 'right';
+              newDirection = dx < 0 ? 'left' : 'right';
             }
-                
             updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+          }
         }
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
