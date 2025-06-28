@@ -225,7 +225,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
               background.width = screenHeight * bgRatio;
           }
           background.position.set(screenWidth / 2, screenHeight / 2);
-          enterButton.position.set(screenWidth / 2 - enterButton.width / 2, screenHeight / 2 - enterButton.height / 2);
+          const topBarOffset = 40; // Approx height of top bar + some margin
+          enterButton.position.set(
+            screenWidth / 2 - enterButton.width / 2, 
+            (screenHeight / 2 - enterButton.height / 2) + topBarOffset
+          );
         }
       };
       app.renderer.on('resize', resizeHandler);
