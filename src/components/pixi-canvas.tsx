@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useLayoutEffect } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
@@ -73,28 +73,27 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
-
-  // Use refs for props to ensure the main useEffect doesn't re-run
+  
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
-  useEffect(() => {
+  useLayoutEffect(() => {
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
-  }, [currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange]);
-
+  });
 
   useEffect(() => {
     if (!pixiContainer.current) return;
 
+    let app: Application | null = new Application();
+
     const initPixi = async () => {
-        appRef.current = new Application();
-        const app = appRef.current;
+        if (!app || !pixiContainer.current) return;
+        
         await app.init({
             backgroundColor: 0x1099bb,
-            resizeTo: pixiContainer.current!,
+            resizeTo: pixiContainer.current,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-        pixiContainer.current!.replaceChildren(app.canvas as HTMLCanvasElement);
+        pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
         
         const world = new Container();
         app.stage.addChild(world);
@@ -140,39 +139,50 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         enterButton.addChild(buttonGraphic, buttonText);
         enterButton.eventMode = 'static';
         enterButton.cursor = 'pointer';
-        enterButton.on('pointertap', () => propsRef.current.setGameState('playing'));
+        enterButton.on('pointertap', () => {
+          propsRef.current.setGameState('playing');
+        });
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
+            if (!app) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
 
-            if (background.texture.valid) {
-                const bgRatio = background.texture.width / background.texture.height;
-                const screenRatio = screenWidth / screenHeight;
-                
-                if (bgRatio > screenRatio) { 
-                    background.height = screenHeight;
-                    background.width = screenHeight * bgRatio;
-                } else { 
-                    background.width = screenWidth;
-                    background.height = screenWidth / bgRatio;
-                }
-            }
-            background.position.set(screenWidth / 2, screenHeight / 2);
-            enterButton.position.set(
-                screenWidth / 2 - enterButton.width / 2,
-                screenHeight / 2 - enterButton.height / 2
-            );
+            const { gameState } = propsRef.current;
+            const isPlaying = gameState === 'playing';
 
-            const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
-            const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
-            const scaleX = screenWidth / worldWidth;
-            const scaleY = screenHeight / worldHeight;
-            const scale = Math.min(scaleX, scaleY);
-            world.scale.set(scale);
-            world.x = (screenWidth - (worldWidth * scale)) / 2;
-            world.y = (screenHeight - (worldHeight * scale)) / 2;
+            world.visible = isPlaying;
+            lobby.visible = !isPlaying;
+            
+            if (isPlaying) {
+                const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
+                const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
+                const scaleX = screenWidth / worldWidth;
+                const scaleY = screenHeight / worldHeight;
+                const scale = Math.min(scaleX, scaleY);
+                world.scale.set(scale);
+                world.x = (screenWidth - (worldWidth * scale)) / 2;
+                world.y = (screenHeight - (worldHeight * scale)) / 2;
+            } else {
+                if (background.texture.valid) {
+                    const bgRatio = background.texture.width / background.texture.height;
+                    const screenRatio = screenWidth / screenHeight;
+                    
+                    if (bgRatio > screenRatio) { 
+                        background.height = screenHeight;
+                        background.width = screenHeight * bgRatio;
+                    } else { 
+                        background.width = screenWidth;
+                        background.height = screenWidth / bgRatio;
+                    }
+                }
+                background.position.set(screenWidth / 2, screenHeight / 2);
+                enterButton.position.set(
+                    screenWidth / 2 - enterButton.width / 2,
+                    screenHeight / 2 - enterButton.height / 2
+                );
+            }
         };
 
         app.renderer.on('resize', resizeHandler);
@@ -200,20 +210,24 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       const npcProximityIndicator = createNpcProximityIndicator(world);
       let proximityState = false;
 
-      // MAIN GAME LOOP
       app.ticker.add(() => {
-        if (!appRef.current) return;
+        if (!app) return;
         const { gameState, currentPlayer, onlinePlayers, onProximityChange } = propsRef.current;
 
         const isPlaying = gameState === 'playing';
         world.visible = isPlaying;
         lobby.visible = !isPlaying;
-        if (!isPlaying) return;
         
+        if (!isPlaying) {
+             resizeHandler();
+             return;
+        }
+        
+        if (!currentPlayer) return;
         const localPlayer = currentPlayer;
         const playerSprite = playerSprites[localPlayer.uid];
-        if (playerSprite) {
-            const speed = 2;
+        if (playerSprite && playerSprite.parent) {
+            const speed = 2.5;
             let dx = 0;
             let dy = 0;
 
@@ -223,15 +237,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             if (keysDown['d'] || keysDown['arrowright']) dx += 1;
             
             const moved = dx !== 0 || dy !== 0;
+            let newDirection: Player['direction'] = localPlayer.direction;
+
             if (moved) {
-                let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as any) || 'front';
-                
-                if (Math.abs(dy) > Math.abs(dx)) newDirection = dy < 0 ? 'back' : 'front';
-                else if (dx !== 0) newDirection = dx < 0 ? 'left' : 'right';
+                if (Math.abs(dy) > Math.abs(dx)) {
+                    newDirection = dy < 0 ? 'back' : 'front';
+                } else if (dx !== 0) {
+                    newDirection = dx < 0 ? 'left' : 'right';
+                }
 
                 const checkCollision = (x: number, y: number): boolean => {
                     const playerWidth = 16 * 0.5;
-                    const playerHeight = 32 * 0.5; 
+                    const playerHeight = 16 * 0.5;
                     const bounds = {
                         left: x - playerWidth / 2,
                         right: x + playerWidth / 2,
@@ -257,27 +274,42 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                 let targetX = playerSprite.x + dx * speed;
                 let targetY = playerSprite.y + dy * speed;
 
-                if (!checkCollision(targetX, playerSprite.y)) {
-                    playerSprite.x = targetX;
+                if (checkCollision(targetX, playerSprite.y)) {
+                    targetX = playerSprite.x;
                 }
-                if (!checkCollision(playerSprite.x, targetY)) {
-                    playerSprite.y = targetY;
+                if (checkCollision(playerSprite.x, targetY)) {
+                    targetY = playerSprite.y;
                 }
                 
-                updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
-            }
-
-            const sheet = loadedSheets[localPlayer.characterId];
-            if(sheet){
-                const newDirection = (localPlayer.direction || 'front');
-                const newAnimationName = `${newDirection}_walk`;
-                if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
-                    playerSprite.textures = sheet.animations[newAnimationName];
-                    playerSprite.currentAnimationName = newAnimationName;
-                    playerSprite.animationSpeed = 0.15;
+                // This prevents getting stuck on corners
+                if (checkCollision(targetX, targetY)) {
+                   targetX = playerSprite.x;
+                   targetY = playerSprite.y;
                 }
-                if (moved && !playerSprite.playing) playerSprite.play();
-                else if (!moved && playerSprite.playing) playerSprite.gotoAndStop(0);
+
+
+                playerSprite.x = targetX;
+                playerSprite.y = targetY;
+
+                const actualMoved = playerSprite.x !== localPlayer.x || playerSprite.y !== localPlayer.y;
+
+                if (actualMoved) {
+                    updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+                }
+
+                const sheet = loadedSheets[localPlayer.characterId];
+                if(sheet){
+                    const newAnimationName = `${newDirection}_walk`;
+                    if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
+                        playerSprite.textures = sheet.animations[newAnimationName];
+                        playerSprite.currentAnimationName = newAnimationName;
+                        playerSprite.animationSpeed = 0.15;
+                    }
+                    if (actualMoved && !playerSprite.playing) playerSprite.play();
+                    else if (!actualMoved && playerSprite.playing) playerSprite.gotoAndStop(0);
+                }
+            } else {
+              if (playerSprite.playing) playerSprite.gotoAndStop(0);
             }
         }
         
@@ -300,18 +332,17 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             }
         }
       });
-      return () => {
-        window.removeEventListener('keydown', onKeyDown);
-        window.removeEventListener('keyup', onKeyUp);
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
-        appRef.current = null;
-      }
     };
 
-    const cleanupPromise = initPixi();
-    
+    initPixi();
+
     return () => {
-      cleanupPromise.then(cleanup => cleanup && cleanup());
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      if (app) {
+        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        app = null;
+      }
     };
   }, []);
 
@@ -378,7 +409,8 @@ async function updatePlayerSprites(world: Container, players: Player[], playerSp
     }
     
     for (const player of players) {
-        if(!player.characterId) continue;
+        if(!player.characterId || !player.uid) continue;
+
         if(!loadedSheets[player.characterId]){
             const character = CHARACTERS_MAP[player.characterId];
             if(character){
@@ -406,7 +438,7 @@ async function updatePlayerSprites(world: Container, players: Player[], playerSp
                     sprite.y = player.y;
                 }
                 const newAnim = `${player.direction || 'front'}_walk`;
-                if(sprite.currentAnimationName !== newAnim) {
+                if(sprite.currentAnimationName !== newAnim && sheet.animations[newAnim]) {
                    sprite.textures = sheet.animations[newAnim];
                    sprite.currentAnimationName = newAnim;
                    sprite.gotoAndStop(0);
