@@ -73,20 +73,26 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
+  const appRef = useRef<Application | null>(null);
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
-  
+
   useLayoutEffect(() => {
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
   });
 
   useEffect(() => {
+    if (appRef.current) {
+        return; // Already initialized
+    }
+    
     const pixiElement = pixiContainerRef.current;
-    if (!pixiElement || pixiElement.childElementCount > 0) {
+    if (!pixiElement) {
         return;
     }
 
     let isMounted = true;
     const app = new Application();
+    appRef.current = app;
     
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
@@ -100,10 +106,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             resolution: window.devicePixelRatio || 1,
         });
 
-        if (!isMounted) {
-            if (!app.destroyed) app.destroy(true, {children: true});
-            return;
-        }
+        if (!isMounted) return;
 
         pixiElement.appendChild(app.canvas);
         window.addEventListener('keydown', onKeyDown);
@@ -341,11 +344,13 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      if (!app.destroyed) {
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
+      const appToDestroy = appRef.current;
+      if (appToDestroy && !appToDestroy.destroyed) {
+        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
       }
+      appRef.current = null;
     };
-  }, []);
+  }, []); // <-- Empty dependency array ensures this runs only once on mount
 
   return <div ref={pixiContainerRef} className="w-full h-full" />;
 };
