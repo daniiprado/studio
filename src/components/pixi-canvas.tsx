@@ -73,32 +73,27 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
-  const initialized = useRef(false);
-
+  
   useLayoutEffect(() => {
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
   });
 
   useEffect(() => {
-    if (initialized.current) {
-        return;
-    }
-    initialized.current = true;
-
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) {
         return;
     }
 
-    const app = new Application();
-    appRef.current = app;
-
+    // These variables are local to this effect's closure.
+    let app: Application | null = new Application();
     let onKeyDown: ((e: KeyboardEvent) => void) | undefined;
     let onKeyUp: ((e: KeyboardEvent) => void) | undefined;
+    let tickerCallback: (() => void) | undefined;
 
     const initPixi = async () => {
+        if (!app) return; // Abort if app was destroyed
+
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x1099bb,
@@ -106,6 +101,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             resolution: window.devicePixelRatio || 1,
         });
         
+        // Check again after async operation
+        if (!app) return; 
+
         pixiElement.appendChild(app.view);
         
         const keysDown: Record<string, boolean> = {};
@@ -168,7 +166,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (app.destroyed) return;
+            if (!app || app.destroyed) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
@@ -245,8 +243,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let proximityState = false;
 
-        const tickerCallback = () => {
-            if (app.destroyed) return;
+        tickerCallback = () => {
+            if (!app || app.destroyed) return;
             
             const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
 
@@ -343,11 +341,13 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       if(onKeyDown) window.removeEventListener('keydown', onKeyDown);
       if(onKeyUp) window.removeEventListener('keyup', onKeyUp);
       
-      const appToDestroy = appRef.current;
-      if (appToDestroy && !appToDestroy.destroyed) {
-        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
+      if (app && !app.destroyed) {
+        if (tickerCallback) {
+          app.ticker.remove(tickerCallback);
+        }
+        app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
-      appRef.current = null;
+      app = null;
     };
   }, []); 
 
