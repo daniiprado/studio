@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
@@ -75,30 +74,31 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
-  
-  useLayoutEffect(() => {
+
+  // Keep propsRef updated with the latest props
+  useEffect(() => {
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
   });
 
   useEffect(() => {
     const pixiElement = pixiContainerRef.current;
-    // Abort if the container isn't ready or if the app is already initialized.
-    if (!pixiElement || appRef.current) {
-      return;
-    }
+    if (!pixiElement) return;
 
-    const app = new Application();
+    // This flag prevents re-initialization in React's strict mode
+    if (appRef.current) return;
+
+    let app = new Application();
     appRef.current = app;
 
-    let tickerCallback: (() => void) | null = null;
+    let tickerCallback: ((time: any) => void) | null = null;
     const keysDown: Record<string, boolean> = {};
+
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-
+    
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
-    // Using an IIFE to handle the async initialization
     (async () => {
       try {
         await app.init({
@@ -108,10 +108,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             resolution: window.devicePixelRatio || 1,
         });
 
-        // After async work, check if the component is still mounted.
-        if (!appRef.current) {
-          app.destroy(true, { children: true, texture: true, baseTexture: true });
-          return;
+        // Abort if component unmounted during async init
+        if (!appRef.current || app.destroyed) {
+            return;
         }
 
         pixiElement.appendChild(app.canvas);
@@ -337,22 +336,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       }
     })();
 
-    // Return the main cleanup function.
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
       const appToDestroy = appRef.current;
-      appRef.current = null; // Mark as unmounted
+      appRef.current = null; // Mark as unmounted/destroyed
 
-      if (appToDestroy) {
-        // The ticker is automatically removed on destroy, but we can be explicit
-        if (tickerCallback && appToDestroy.ticker) {
+      if (appToDestroy && !appToDestroy.destroyed) {
+        if (tickerCallback) {
           appToDestroy.ticker.remove(tickerCallback);
         }
-        if (!appToDestroy.destroyed) {
-          appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
-        }
+        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
   }, []);
