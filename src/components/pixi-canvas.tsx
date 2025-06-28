@@ -88,6 +88,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   const npcSpriteRef = useRef<PlayerSprite | null>(null);
   const npcProximityIndicatorRef = useRef<Graphics | null>(null);
 
+  const onProximityChangeRef = useRef(onProximityChange);
+  useEffect(() => {
+    onProximityChangeRef.current = onProximityChange;
+  }, [onProximityChange]);
+
 
   useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -342,7 +347,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
           
           if (isNear !== proximityStateRef.current) {
             proximityStateRef.current = isNear;
-            onProximityChange(isNear);
+            onProximityChangeRef.current(isNear);
           }
           
           const indicator = npcProximityIndicatorRef.current;
@@ -368,7 +373,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         appRef.current = null;
       }
     };
-  }, [setGameState, onProximityChange]);
+  }, [setGameState]);
 
   useEffect(() => {
     if (!isPixiInitialized) return;
