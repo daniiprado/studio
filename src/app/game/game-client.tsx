@@ -183,6 +183,7 @@ export default function GameClient() {
           try {
             const base64data = reader.result as string;
             setIsSubmitting(true);
+            setNpcResponse(null);
             const result = await npcChat({ audioDataUri: base64data });
             toast({
               title: "Quest Giver says...",
@@ -325,7 +326,7 @@ export default function GameClient() {
                                             onChange={(e) => setChatInput(e.target.value)} 
                                             disabled={isSubmitting}
                                         />
-                                        <Button type="submit" disabled={isSubmitting}>
+                                        <Button type="submit" disabled={isSubmitting || !chatInput.trim()}>
                                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                                             Send
                                         </Button>
