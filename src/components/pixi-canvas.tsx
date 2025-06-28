@@ -81,8 +81,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   });
 
   useEffect(() => {
+    // This flag ensures the effect runs only once, preventing Strict Mode from re-initializing.
     if (appRef.current) {
-        return; // Already initialized
+        return;
     }
     
     const pixiElement = pixiContainerRef.current;
@@ -90,7 +91,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         return;
     }
 
-    let isMounted = true;
+    let isComponentMounted = true;
     const app = new Application();
     appRef.current = app;
     
@@ -98,6 +99,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     
+    // Encapsulate all async setup logic in one function
     const initPixi = async () => {
         await app.init({
             resizeTo: pixiElement,
@@ -106,7 +108,13 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             resolution: window.devicePixelRatio || 1,
         });
 
-        if (!isMounted) return;
+        // CRITICAL CHECK: If component unmounted while awaiting, abort setup.
+        if (!isComponentMounted) {
+            if (!app.destroyed) {
+                app.destroy(true, {children: true, texture: true, baseTexture: true});
+            }
+            return;
+        }
 
         pixiElement.appendChild(app.canvas);
         window.addEventListener('keydown', onKeyDown);
@@ -141,7 +149,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         app.stage.addChild(lobby);
         
         const backgroundTexture = await Assets.load(lobbyImage.src);
-        if (!isMounted) return;
+        // CRITICAL CHECK: Abort if unmounted during asset load
+        if (!isComponentMounted) return;
+
         const background = new Sprite(backgroundTexture);
         background.anchor.set(0.5);
         lobby.addChild(background);
@@ -241,7 +251,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         };
 
         const npcSprite = await createNpcSprite(world, loadedSheets);
-        if (!isMounted) return;
+        if (!isComponentMounted) return; // CRITICAL CHECK
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let proximityState = false;
 
@@ -340,7 +350,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     initPixi().catch(console.error);
 
     return () => {
-      isMounted = false;
+      isComponentMounted = false;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
