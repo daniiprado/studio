@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useRef, useEffect, useLayoutEffect } from 'react';
@@ -443,7 +444,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     };
   }, []); 
 
-  return <div ref={pixiContainerRef} className="w-full h-full" />;
+  return <div ref={pixiContainerRef} className="w-full h-full relative z-10" />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
