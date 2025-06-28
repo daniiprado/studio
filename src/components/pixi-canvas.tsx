@@ -8,6 +8,7 @@ import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
 import { ref, update } from 'firebase/database';
 import { throttle } from 'lodash';
+import lobbyImage from '@/assets/lobby.jpg';
 
 interface PixiCanvasProps {
   currentPlayer: Player;
@@ -181,7 +182,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       const lobbyContainer = new Container();
       lobbyRef.current = lobbyContainer;
       
-      const backgroundTexture = await Assets.load('/backgrounds/pixel-art-lobby.png');
+      const backgroundTexture = await Assets.load(lobbyImage.src);
       const background = new Sprite(backgroundTexture);
       background.anchor.set(0.5);
       lobbyContainer.addChild(background);
