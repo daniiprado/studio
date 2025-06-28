@@ -71,12 +71,12 @@ const NPC = {
 
 const PROXIMITY_RANGE = 50;
 
-const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
+const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
-  const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
+  const propsRef = useRef(props);
   
   useLayoutEffect(() => {
-    propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
+    propsRef.current = props;
   });
 
   useEffect(() => {
@@ -85,30 +85,26 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         return;
     }
 
-    // These variables are local to this effect's closure.
-    let app: Application | null = new Application();
-    let onKeyDown: ((e: KeyboardEvent) => void) | undefined;
-    let onKeyUp: ((e: KeyboardEvent) => void) | undefined;
+    let isMounted = true;
+    const app = new Application();
+    
     let tickerCallback: (() => void) | undefined;
-
-    const initPixi = async () => {
-        if (!app) return; // Abort if app was destroyed
-
+    const keysDown: Record<string, boolean> = {};
+    const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
+    const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+        
+    const init = async () => {
+      try {
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x1099bb,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-        
-        // Check again after async operation
-        if (!app) return; 
+        if (!isMounted) return;
 
         pixiElement.appendChild(app.view);
         
-        const keysDown: Record<string, boolean> = {};
-        onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
-        onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
         
@@ -141,6 +137,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         app.stage.addChild(lobby);
         
         const backgroundTexture = await Assets.load(lobbyImage.src);
+        if (!isMounted) return;
+
         const background = new Sprite(backgroundTexture);
         background.anchor.set(0.5);
         lobby.addChild(background);
@@ -161,12 +159,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         enterButton.eventMode = 'static';
         enterButton.cursor = 'pointer';
         enterButton.on('pointertap', () => {
-          propsRef.current.setGameState('playing');
+          if (isMounted) propsRef.current.setGameState('playing');
         });
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (!app || app.destroyed) return;
+            if (!isMounted || app.destroyed) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
@@ -208,6 +206,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         resizeHandler();
       
         const updatePlayerInDb = throttle((data: Partial<Player>) => {
+            if (!isMounted) return;
             const { currentPlayer: localPlayer } = propsRef.current;
             if (!localPlayer) return;
             const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
@@ -240,11 +239,13 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         };
 
         const npcSprite = await createNpcSprite(world, loadedSheets);
+        if (!isMounted) return;
+        
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let proximityState = false;
 
         tickerCallback = () => {
-            if (!app || app.destroyed) return;
+            if (!isMounted || app.destroyed) return;
             
             const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
 
@@ -314,8 +315,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             
             updatePlayerSprites(world, [localPlayer, ...currentOnlinePlayers], playerSprites, playerText, loadedSheets, localPlayer.uid);
             
-            const pSprite = playerSprites[localPlayer.uid];
-            if (pSprite && npcSprite) {
+            if (playerSprites[localPlayer.uid] && npcSprite) {
+                const pSprite = playerSprites[localPlayer.uid];
                 const distance = Math.hypot(pSprite.x - npcSprite.x, pSprite.y - npcSprite.y);
                 const isNear = distance < PROXIMITY_RANGE;
                 if (isNear !== proximityState) {
@@ -333,21 +334,26 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         };
 
         app.ticker.add(tickerCallback);
+      } catch (error) {
+        console.error("Error during Pixi initialization:", error);
+      }
     };
     
-    initPixi().catch(console.error);
+    init();
 
     return () => {
-      if(onKeyDown) window.removeEventListener('keydown', onKeyDown);
-      if(onKeyUp) window.removeEventListener('keyup', onKeyUp);
+      isMounted = false;
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       
+      if (tickerCallback) {
+        app.ticker.remove(tickerCallback);
+      }
+
+      // Final safeguard: ensure app exists and is not already destroyed.
       if (app && !app.destroyed) {
-        if (tickerCallback) {
-          app.ticker.remove(tickerCallback);
-        }
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
-      app = null;
     };
   }, []); 
 
