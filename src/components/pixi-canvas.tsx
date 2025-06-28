@@ -75,31 +75,29 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
+  const initialized = useRef(false);
 
   useLayoutEffect(() => {
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
   });
 
   useEffect(() => {
-    // This flag ensures the effect runs only once, preventing Strict Mode from re-initializing.
-    if (appRef.current) {
+    if (initialized.current) {
         return;
     }
-    
+    initialized.current = true;
+
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) {
         return;
     }
 
-    let isComponentMounted = true;
     const app = new Application();
     appRef.current = app;
-    
-    const keysDown: Record<string, boolean> = {};
-    const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
-    const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-    
-    // Encapsulate all async setup logic in one function
+
+    let onKeyDown: ((e: KeyboardEvent) => void) | undefined;
+    let onKeyUp: ((e: KeyboardEvent) => void) | undefined;
+
     const initPixi = async () => {
         await app.init({
             resizeTo: pixiElement,
@@ -107,16 +105,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-
-        // CRITICAL CHECK: If component unmounted while awaiting, abort setup.
-        if (!isComponentMounted) {
-            if (!app.destroyed) {
-                app.destroy(true, {children: true, texture: true, baseTexture: true});
-            }
-            return;
-        }
-
-        pixiElement.appendChild(app.canvas);
+        
+        pixiElement.appendChild(app.view);
+        
+        const keysDown: Record<string, boolean> = {};
+        onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
+        onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
         
@@ -149,9 +143,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         app.stage.addChild(lobby);
         
         const backgroundTexture = await Assets.load(lobbyImage.src);
-        // CRITICAL CHECK: Abort if unmounted during asset load
-        if (!isComponentMounted) return;
-
         const background = new Sprite(backgroundTexture);
         background.anchor.set(0.5);
         lobby.addChild(background);
@@ -251,7 +242,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         };
 
         const npcSprite = await createNpcSprite(world, loadedSheets);
-        if (!isComponentMounted) return; // CRITICAL CHECK
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let proximityState = false;
 
@@ -350,9 +340,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     initPixi().catch(console.error);
 
     return () => {
-      isComponentMounted = false;
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
+      if(onKeyDown) window.removeEventListener('keydown', onKeyDown);
+      if(onKeyUp) window.removeEventListener('keyup', onKeyUp);
       
       const appToDestroy = appRef.current;
       if (appToDestroy && !appToDestroy.destroyed) {
@@ -360,7 +349,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       }
       appRef.current = null;
     };
-  }, []); // <-- Empty dependency array ensures this runs only once on mount
+  }, []); 
 
   return <div ref={pixiContainerRef} className="w-full h-full" />;
 };
