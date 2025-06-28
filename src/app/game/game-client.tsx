@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
-import { Loader2, LogOut, MessageSquare, Mic, PanelRightOpen, PanelRightClose, PersonStanding } from 'lucide-react';
+import { Loader2, LogOut, MessageSquare, Mic, PanelRightOpen, PanelRightClose, PersonStanding, MicOff } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import RightSidebar from '@/components/right-sidebar';
 import {
@@ -16,6 +16,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 import { equalTo, onValue, orderByChild, query, ref } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
@@ -35,10 +38,16 @@ const PixiCanvas = dynamic(() => import('@/components/pixi-canvas'), {
 export default function GameClient() {
   const { user, player, loading, signOut } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [onlinePlayers, setOnlinePlayers] = useState<Player[]>([]);
   const [isCharacterModalOpen, setCharacterModalOpen] = useState(false);
   const [gameState, setGameState] = useState<'lobby' | 'playing'>('lobby');
+
+  const [isNearNpc, setIsNearNpc] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
+  const mediaStreamRef = React.useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -55,7 +64,6 @@ export default function GameClient() {
       if (snapshot.exists()) {
         const playersObject = snapshot.val();
         Object.keys(playersObject).forEach((uid) => {
-          // We only add other players, the current player is handled separately
           if (uid !== user.uid) {
             playersData.push({ ...playersObject[uid], uid });
           }
@@ -66,6 +74,40 @@ export default function GameClient() {
   
     return () => unsubscribe();
   }, [user]);
+
+  const handleVoiceChatClick = async () => {
+    if (isRecording) {
+      mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+      setIsRecording(false);
+      return;
+    }
+
+    if (hasMicPermission === false) {
+      toast({
+        variant: 'destructive',
+        title: 'Microphone Access Denied',
+        description: 'Please enable microphone permissions in your browser settings.',
+      });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      setHasMicPermission(true);
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      setHasMicPermission(false);
+      toast({
+        variant: 'destructive',
+        title: 'Microphone Access Denied',
+        description: 'Please enable microphone permissions in your browser settings.',
+      });
+    }
+  };
+
 
   if (loading || !user || !player) {
     return (
@@ -127,15 +169,37 @@ export default function GameClient() {
                 onlinePlayers={onlinePlayers} 
                 gameState={gameState}
                 setGameState={setGameState}
+                onProximityChange={setIsNearNpc}
             />
 
             <footer className="absolute bottom-0 left-1/2 -translate-x-1/2 z-10 p-4">
                 <div className="flex items-center gap-2 rounded-full bg-card/50 px-4 py-2 border border-border backdrop-blur-sm">
-                    <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20"><MessageSquare/></Button>
-                    <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20"><Mic/></Button>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                             <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'}>
+                                <MessageSquare/>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 mb-2">
+                           <div className="grid gap-4">
+                                <div className="space-y-2">
+                                    <h4 className="font-medium leading-none">Chat with Quest Giver</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                        Type your message below.
+                                    </p>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Input placeholder="Hello there!" />
+                                    <Button>Send</Button>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                    <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={handleVoiceChatClick}>
+                        {isRecording ? <MicOff className="text-destructive"/> : <Mic/>}
+                    </Button>
                 </div>
             </footer>
-
         </main>
         
         {isSidebarOpen && (
