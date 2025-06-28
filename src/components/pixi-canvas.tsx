@@ -135,6 +135,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
     if (!pixiContainer.current || appRef.current) return;
 
     const app = new Application();
+    let backgroundTexture: Texture | null = null;
+    
     const onKeyDown = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = false; };
 
@@ -176,7 +178,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
       const lobbyContainer = new Container();
       lobbyRef.current = lobbyContainer;
       
-      const backgroundTexture = await Assets.load('https://placehold.co/1280x720.png');
+      backgroundTexture = await Assets.load('https://placehold.co/1280x720.png');
       const background = new Sprite(backgroundTexture);
       background.anchor.set(0.5);
       lobbyContainer.addChild(background);
@@ -208,17 +210,22 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         const screenWidth = app.screen.width;
         const screenHeight = app.screen.height;
 
-        const screenRatio = screenWidth / screenHeight;
-        const bgRatio = backgroundTexture.width / backgroundTexture.height;
-        if (screenRatio > bgRatio) {
-            background.width = screenWidth;
-            background.height = screenWidth / bgRatio;
-        } else {
-            background.height = screenHeight;
-            background.width = screenHeight * bgRatio;
+        if (lobbyRef.current && backgroundTexture) {
+          const background = lobbyRef.current.getChildAt(0) as Sprite;
+          const enterButton = lobbyRef.current.getChildAt(1) as Container;
+
+          const screenRatio = screenWidth / screenHeight;
+          const bgRatio = backgroundTexture.width / backgroundTexture.height;
+          if (screenRatio > bgRatio) {
+              background.width = screenWidth;
+              background.height = screenWidth / bgRatio;
+          } else {
+              background.height = screenHeight;
+              background.width = screenHeight * bgRatio;
+          }
+          background.position.set(screenWidth / 2, screenHeight / 2);
+          enterButton.position.set(screenWidth / 2 - enterButton.width / 2, screenHeight / 2 - enterButton.height / 2);
         }
-        background.position.set(screenWidth / 2, screenHeight / 2);
-        enterButton.position.set(screenWidth / 2 - enterButton.width / 2, screenHeight / 2 - enterButton.height / 2);
       };
       app.renderer.on('resize', resizeHandler);
       resizeHandler();
@@ -265,12 +272,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
             const targetY = playerSprite.y + moveY;
 
             // Check X axis
-            if (!checkCollision(targetX, oldY, playerSprite.width, playerSprite.height)) {
+            if (!checkCollision(targetX, oldY, playerSprite.width * playerSprite.scale.x, playerSprite.height * playerSprite.scale.y)) {
                 playerSprite.x = targetX;
             }
     
             // Check Y axis, using the potentially new X to prevent clipping corners
-            if (!checkCollision(playerSprite.x, targetY, playerSprite.width, playerSprite.height)) {
+            if (!checkCollision(playerSprite.x, targetY, playerSprite.width * playerSprite.scale.x, playerSprite.height * playerSprite.scale.y)) {
                 playerSprite.y = targetY;
             }
         }
@@ -400,7 +407,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
           
           if(sprite.characterId !== player.characterId){
              sprite.destroy();
-             text.destroy();
+             if(text) text.destroy();
              delete playerSpritesRef.current[player.uid];
              delete playerTextRef.current[player.uid];
           } else {
@@ -416,9 +423,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
                     sprite.gotoAndStop(0);
                 }
              }
-             text.x = sprite.x;
-             text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
-             text.text = player.name || 'Player';
+             if(text) {
+                text.x = sprite.x;
+                text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
+                text.text = player.name || 'Player';
+             }
           }
         }
 
