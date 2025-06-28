@@ -258,8 +258,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
             const normalizedDx = dx / magnitude;
             const normalizedDy = dy / magnitude;
             
-            const moveX = normalizedDx * speed * time.deltaTime;
-            const moveY = normalizedDy * speed * time.deltaTime;
+            const moveX = normalizedDx * speed;
+            const moveY = normalizedDy * speed;
 
             const targetX = playerSprite.x + moveX;
             const targetY = playerSprite.y + moveY;
@@ -307,11 +307,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         if (playerText && !playerText.destroyed) {
           playerText.x = playerSprite.x;
           playerText.y = playerSprite.y - (playerSprite.height * playerSprite.scale.y) - 5;
-        }
-        
-        if (world) {
-            world.x = app.screen.width / 2 - playerSprite.x;
-            world.y = app.screen.height / 2 - playerSprite.y;
         }
       });
       setPixiInitialized(true);
