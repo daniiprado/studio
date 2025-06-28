@@ -82,18 +82,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
   useEffect(() => {
     let isMounted = true;
-    let app: Application;
-    let tickerCallback: () => void;
+    const keysDown: Record<string, boolean> = {};
 
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-    const keysDown: Record<string, boolean> = {};
-
+    
     const initPixi = async () => {
         const pixiElement = pixiContainerRef.current;
-        if (!pixiElement || appRef.current) return;
+        if (!pixiElement || appRef.current) {
+            return;
+        }
 
-        app = new Application();
+        const app = new Application();
         appRef.current = app;
 
         await app.init({
@@ -104,7 +104,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         });
 
         if (!isMounted) {
-            if (!app.destroyed) app.destroy(true, {children: true});
+            if (app && !app.destroyed) app.destroy(true, {children: true});
+            appRef.current = null;
             return;
         }
 
@@ -117,8 +118,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         const loadedSheets: Record<string, Spritesheet> = {};
         
         const world = new Container();
-        app.stage.addChild(world);
         world.sortableChildren = true;
+        app.stage.addChild(world);
         
         const mapContainer = new Container();
         mapContainer.zIndex = 0;
@@ -245,19 +246,17 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let proximityState = false;
 
-        tickerCallback = () => {
+        const tickerCallback = () => {
             if (!app || app.destroyed) return;
+            
             const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
 
-            world.visible = currentGameState === 'playing';
-            lobby.visible = currentGameState === 'lobby';
-            
-            if (currentGameState !== 'playing') {
-                resizeHandler();
+            resizeHandler();
+
+            if (currentGameState !== 'playing' || !localPlayer) {
                 return;
             }
             
-            if (!localPlayer) return;
             const playerSprite = playerSprites[localPlayer.uid];
             
             if (playerSprite && playerSprite.parent) {
@@ -348,9 +347,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       
       const appToDestroy = appRef.current;
       if (appToDestroy) {
-        if(tickerCallback && appToDestroy.ticker) {
-            appToDestroy.ticker.remove(tickerCallback);
-        }
         if (!appToDestroy.destroyed) {
             appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
         }
@@ -367,10 +363,15 @@ async function createNpcSprite(world: Container, loadedSheets: Record<string, Sp
     if (!character) return null;
     
     if (!loadedSheets[NPC.characterId]) {
-        const baseTexture = await Assets.load<Texture>(character.png.src);
-        const sheet = new Spritesheet(baseTexture, character.json);
-        await sheet.parse();
-        loadedSheets[NPC.characterId] = sheet;
+        try {
+            const baseTexture = await Assets.load<Texture>(character.png.src);
+            const sheet = new Spritesheet(baseTexture, character.json);
+            await sheet.parse();
+            loadedSheets[NPC.characterId] = sheet;
+        } catch(e) {
+            console.error(`Failed to load character sheet for ${NPC.characterId}`, e);
+            return null;
+        }
     }
     
     const sheet = loadedSheets[NPC.characterId];
@@ -427,10 +428,15 @@ async function updatePlayerSprites(world: Container, players: Player[], playerSp
         if(!loadedSheets[player.characterId]){
             const character = CHARACTERS_MAP[player.characterId];
             if(character){
-                const baseTexture = await Assets.load<Texture>(character.png.src);
-                const sheet = new Spritesheet(baseTexture, character.json);
-                await sheet.parse();
-                loadedSheets[player.characterId] = sheet;
+                try {
+                    const baseTexture = await Assets.load<Texture>(character.png.src);
+                    const sheet = new Spritesheet(baseTexture, character.json);
+                    await sheet.parse();
+                    loadedSheets[player.characterId] = sheet;
+                } catch(e) {
+                    console.error(`Failed to load character sheet for ${player.characterId}`, e);
+                    continue;
+                }
             }
         }
         const sheet = loadedSheets[player.characterId];
