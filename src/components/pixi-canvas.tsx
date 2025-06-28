@@ -72,7 +72,8 @@ const NPC = {
 const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
-  const pixiContainer = useRef<HTMLDivElement>(null);
+  const pixiContainerRef = useRef<HTMLDivElement>(null);
+  const appRef = useRef<Application | null>(null);
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
   
   useLayoutEffect(() => {
@@ -80,33 +81,41 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   });
 
   useEffect(() => {
-    const pixiElement = pixiContainer.current;
-    if (!pixiElement) {
-        return;
+    const pixiElement = pixiContainerRef.current;
+    // Abort if the container isn't ready or if the app is already initialized.
+    if (!pixiElement || appRef.current) {
+      return;
     }
 
-    let app: Application | null = new Application();
-    let tickerCallback: (() => void) | null = null;
+    const app = new Application();
+    appRef.current = app;
 
+    let tickerCallback: (() => void) | null = null;
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-    
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    
-    const initPixi = async () => {
-        if (!app || !pixiElement) return;
-        
+
+    // Using an IIFE to handle the async initialization
+    (async () => {
+      try {
         await app.init({
-            backgroundColor: 0x1099bb,
             resizeTo: pixiElement,
+            backgroundColor: 0x1099bb,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-        
+
+        // After async work, check if the component is still mounted.
+        if (!appRef.current) {
+          app.destroy(true, { children: true, texture: true, baseTexture: true });
+          return;
+        }
+
         pixiElement.appendChild(app.canvas);
-        
+
         const playerSprites: Record<string, PlayerSprite> = {};
         const playerText: Record<string, Text> = {};
         const loadedSheets: Record<string, Spritesheet> = {};
@@ -322,27 +331,33 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         };
 
         app.ticker.add(tickerCallback);
-    };
 
-    initPixi();
+      } catch (error) {
+        console.error("Failed to initialize PixiJS", error);
+      }
+    })();
 
+    // Return the main cleanup function.
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      if (app) {
-        if(tickerCallback && app.ticker) {
-            app.ticker.remove(tickerCallback);
+      const appToDestroy = appRef.current;
+      appRef.current = null; // Mark as unmounted
+
+      if (appToDestroy) {
+        // The ticker is automatically removed on destroy, but we can be explicit
+        if (tickerCallback && appToDestroy.ticker) {
+          appToDestroy.ticker.remove(tickerCallback);
         }
-        if (!app.destroyed) {
-            app.destroy(true, { children: true, texture: true, baseTexture: true });
+        if (!appToDestroy.destroyed) {
+          appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
         }
-        app = null;
       }
     };
   }, []);
 
-  return <div ref={pixiContainer} className="w-full h-full" />;
+  return <div ref={pixiContainerRef} className="w-full h-full" />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>) {
@@ -405,7 +420,7 @@ async function updatePlayerSprites(world: Container, players: Player[], playerSp
     }
     
     for (const player of players) {
-        if(!player.characterId || !player.uid) continue;
+        if(!player.characterId || !player.uid || !player.x || !player.y) continue;
 
         if(!loadedSheets[player.characterId]){
             const character = CHARACTERS_MAP[player.characterId];
