@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
@@ -74,6 +74,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
   const loadedSheetsRef = useRef<Record<string, Spritesheet>>({});
   const keysDown = useRef<Record<string, boolean>>({});
   
+  const [isPixiInitialized, setPixiInitialized] = useState(false);
   const currentPlayerRef = useRef(currentPlayer);
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
@@ -143,6 +144,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
       if (!pixiContainer.current) return;
       pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
 
+      // --- WORLD CREATION ---
       const world = new Container();
       world.sortableChildren = true;
       worldRef.current = world;
@@ -163,11 +165,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
             mapContainer.addChild(tile);
         }
       }
-
+      
+      // --- LOBBY CREATION ---
       const lobbyContainer = new Container();
       lobbyRef.current = lobbyContainer;
       
-      const backgroundTexture = await Assets.load('https://placehold.co/1920x1080.png?text=ServiAdventures&data-ai-hint=pixel+art');
+      const backgroundTexture = await Assets.load('https://placehold.co/1280x720.png');
       const background = new Sprite(backgroundTexture);
       background.anchor.set(0.5);
       lobbyContainer.addChild(background);
@@ -209,10 +212,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
             background.width = screenHeight * bgRatio;
         }
         background.position.set(screenWidth / 2, screenHeight / 2);
-
-        if (lobbyContainer.parent) {
-            enterButton.position.set(screenWidth / 2 - enterButton.width / 2, screenHeight / 2 - enterButton.height / 2);
-        }
+        enterButton.position.set(screenWidth / 2 - enterButton.width / 2, screenHeight / 2 - enterButton.height / 2);
       };
       app.renderer.on('resize', resizeHandler);
       resizeHandler();
@@ -252,12 +252,15 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         let newX = playerSprite.x + dx * speed * time.deltaTime;
         let newY = playerSprite.y + dy * speed * time.deltaTime;
         
-        if (!checkCollision(newX, playerSprite.y, playerSprite.width, playerSprite.height)) {
-          playerSprite.x = newX;
+        if (checkCollision(newX, playerSprite.y, playerSprite.width, playerSprite.height)) {
+          newX = playerSprite.x;
         }
-        if (!checkCollision(playerSprite.x, newY, playerSprite.width, playerSprite.height)) {
-          playerSprite.y = newY;
+        if (checkCollision(playerSprite.x, newY, playerSprite.width, playerSprite.height)) {
+          newY = playerSprite.y;
         }
+        playerSprite.x = newX;
+        playerSprite.y = newY;
+
 
         const moved = playerSprite.x !== oldX || playerSprite.y !== oldY;
         let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as Player['direction'] || 'front';
@@ -293,6 +296,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
           playerText.y = playerSprite.y - playerSprite.height - 5;
         }
       });
+      setPixiInitialized(true);
     };
     
     initPixi();
@@ -308,6 +312,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
   }, []);
 
   useEffect(() => {
+    if (!isPixiInitialized) return;
+
     const app = appRef.current;
     if (!app) return;
 
@@ -322,11 +328,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         if (lobby && !lobby.parent) app.stage.addChild(lobby);
     }
 
-  }, [gameState]);
+  }, [gameState, isPixiInitialized]);
 
 
   useEffect(() => {
-    if (!appRef.current || !worldRef.current) return;
+    if (!appRef.current || !worldRef.current || !isPixiInitialized) return;
     const world = worldRef.current;
 
     if (gameState !== 'playing') {
@@ -440,7 +446,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
     
     loadAssetsAndPlayers();
     
-  }, [onlinePlayers, currentPlayer, gameState, updatePlayerInDb]);
+  }, [onlinePlayers, currentPlayer, gameState, isPixiInitialized, updatePlayerInDb]);
 
   return <div ref={pixiContainer} className="w-full h-full" />;
 };
