@@ -163,6 +163,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       if (!pixiContainer.current) return;
       pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
 
+      // World container setup
       const world = new Container();
       world.sortableChildren = true;
       worldRef.current = world;
@@ -183,7 +184,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             mapContainer.addChild(tile);
         }
       }
-      
+
+      // Lobby container setup
       const lobbyContainer = new Container();
       lobbyRef.current = lobbyContainer;
       
@@ -214,24 +216,41 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         const screenWidth = app.screen.width;
         const screenHeight = app.screen.height;
 
+        // Lobby view
         if (lobbyRef.current && background.texture.valid) {
-          const screenRatio = screenWidth / screenHeight;
-          const bgRatio = background.texture.width / background.texture.height;
-          if (screenRatio > bgRatio) {
-              background.width = screenWidth;
-              background.height = screenWidth / bgRatio;
-          } else {
-              background.height = screenHeight;
-              background.width = screenHeight * bgRatio;
-          }
-          background.position.set(screenWidth / 2, screenHeight / 2);
-          const topBarOffset = 40; // Approx height of top bar + some margin
-          enterButton.position.set(
-            screenWidth / 2 - enterButton.width / 2, 
-            (screenHeight / 2 - enterButton.height / 2) + topBarOffset
-          );
+            const screenRatio = screenWidth / screenHeight;
+            const bgRatio = background.texture.width / background.texture.height;
+
+            if (screenRatio > bgRatio) {
+                background.height = screenHeight;
+                background.width = screenHeight * bgRatio;
+            } else {
+                background.width = screenWidth;
+                background.height = screenWidth / bgRatio;
+            }
+
+            background.position.set(screenWidth / 2, screenHeight / 2);
+
+            enterButton.position.set(
+                screenWidth / 2 - enterButton.width / 2,
+                screenHeight / 2 - enterButton.height / 2
+            );
+        }
+
+        // Game world view
+        if (worldRef.current) {
+            const worldContainer = worldRef.current;
+            const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
+            const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
+
+            const scale = Math.min(screenWidth / worldWidth, screenHeight / worldHeight);
+
+            worldContainer.scale.set(scale);
+            worldContainer.x = (screenWidth - (worldWidth * scale)) / 2;
+            worldContainer.y = (screenHeight - (worldHeight * scale)) / 2;
         }
       };
+
       app.renderer.on('resize', resizeHandler);
       resizeHandler();
       
@@ -292,7 +311,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
         if (!playerSprite || playerSprite.destroyed) return;
         
-        const speed = 1.5;
+        const speed = 2.5;
         let dx = 0;
         let dy = 0;
 
