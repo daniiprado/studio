@@ -83,7 +83,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     if (!pixiContainer.current) return;
 
     let app: Application | null = new Application();
+    const keysDown: Record<string, boolean> = {};
 
+    const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
+    const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+    
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    
     const initPixi = async () => {
         if (!app || !pixiContainer.current) return;
         
@@ -191,12 +198,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       const playerSprites: Record<string, PlayerSprite> = {};
       const playerText: Record<string, Text> = {};
       const loadedSheets: Record<string, Spritesheet> = {};
-      const keysDown: Record<string, boolean> = {};
-
-      const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
-      const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-      window.addEventListener('keydown', onKeyDown);
-      window.addEventListener('keyup', onKeyUp);
       
       const updatePlayerInDb = throttle((data: Partial<Player>) => {
         const { currentPlayer } = propsRef.current;
@@ -236,8 +237,55 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             if (keysDown['a'] || keysDown['arrowleft']) dx -= 1;
             if (keysDown['d'] || keysDown['arrowright']) dx += 1;
             
-            const moved = dx !== 0 || dy !== 0;
             let newDirection: Player['direction'] = localPlayer.direction;
+            
+            const checkCollision = (x: number, y: number): boolean => {
+              const playerWidth = 16 * 0.5;
+              const playerHeight = 16 * 0.5;
+              const bounds = {
+                  left: x - playerWidth / 2,
+                  right: x + playerWidth / 2,
+                  top: y - playerHeight,
+                  bottom: y,
+              };
+              const corners = [
+                  { x: bounds.left, y: bounds.top },
+                  { x: bounds.right, y: bounds.top },
+                  { x: bounds.left, y: bounds.bottom },
+                  { x: bounds.right, y: bounds.bottom },
+              ];
+              for (const corner of corners) {
+                  const tileX = Math.floor(corner.x / TILE_SIZE);
+                  const tileY = Math.floor(corner.y / TILE_SIZE);
+                  if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return true;
+                  const tileType = mapLayout[tileY]?.[tileX];
+                  if (tileType === 1 || tileType === 3) return true;
+              }
+              return false;
+            };
+  
+            let targetX = playerSprite.x;
+            let targetY = playerSprite.y;
+            let moved = false;
+  
+            if (dx !== 0) {
+              if (!checkCollision(playerSprite.x + dx * speed, playerSprite.y)) {
+                targetX += dx * speed;
+                moved = true;
+              }
+            }
+            if (dy !== 0) {
+              if (!checkCollision(targetX, playerSprite.y + dy * speed)) {
+                targetY += dy * speed;
+                moved = true;
+              } else if (!checkCollision(playerSprite.x, playerSprite.y + dy * speed)) {
+                targetY += dy * speed;
+                moved = true;
+              }
+            }
+            
+            playerSprite.x = targetX;
+            playerSprite.y = targetY;
 
             if (moved) {
                 if (Math.abs(dy) > Math.abs(dx)) {
@@ -246,56 +294,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                     newDirection = dx < 0 ? 'left' : 'right';
                 }
 
-                const checkCollision = (x: number, y: number): boolean => {
-                    const playerWidth = 16 * 0.5;
-                    const playerHeight = 16 * 0.5;
-                    const bounds = {
-                        left: x - playerWidth / 2,
-                        right: x + playerWidth / 2,
-                        top: y - playerHeight,
-                        bottom: y,
-                    };
-                    const corners = [
-                        { x: bounds.left, y: bounds.top },
-                        { x: bounds.right, y: bounds.top },
-                        { x: bounds.left, y: bounds.bottom },
-                        { x: bounds.right, y: bounds.bottom },
-                    ];
-                    for (const corner of corners) {
-                        const tileX = Math.floor(corner.x / TILE_SIZE);
-                        const tileY = Math.floor(corner.y / TILE_SIZE);
-                        if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return true;
-                        const tileType = mapLayout[tileY]?.[tileX];
-                        if (tileType === 1 || tileType === 3) return true;
-                    }
-                    return false;
-                };
-
-                let targetX = playerSprite.x + dx * speed;
-                let targetY = playerSprite.y + dy * speed;
-
-                if (checkCollision(targetX, playerSprite.y)) {
-                    targetX = playerSprite.x;
-                }
-                if (checkCollision(playerSprite.x, targetY)) {
-                    targetY = playerSprite.y;
-                }
-                
-                // This prevents getting stuck on corners
-                if (checkCollision(targetX, targetY)) {
-                   targetX = playerSprite.x;
-                   targetY = playerSprite.y;
-                }
-
-
-                playerSprite.x = targetX;
-                playerSprite.y = targetY;
-
-                const actualMoved = playerSprite.x !== localPlayer.x || playerSprite.y !== localPlayer.y;
-
-                if (actualMoved) {
-                    updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
-                }
+                updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
 
                 const sheet = loadedSheets[localPlayer.characterId];
                 if(sheet){
@@ -305,8 +304,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                         playerSprite.currentAnimationName = newAnimationName;
                         playerSprite.animationSpeed = 0.15;
                     }
-                    if (actualMoved && !playerSprite.playing) playerSprite.play();
-                    else if (!actualMoved && playerSprite.playing) playerSprite.gotoAndStop(0);
+                    if (!playerSprite.playing) playerSprite.play();
                 }
             } else {
               if (playerSprite.playing) playerSprite.gotoAndStop(0);
