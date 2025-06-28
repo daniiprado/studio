@@ -27,29 +27,40 @@ export async function npcChat(input: NpcChatInput): Promise<NpcChatOutput> {
   return npcChatFlow(input);
 }
 
-const prompt = ai.definePrompt({
-  name: 'npcChatPrompt',
-  input: {schema: NpcChatInputSchema},
-  output: {schema: NpcChatOutputSchema},
-  prompt: `You are a friendly and slightly mysterious Quest Giver in a fantasy world called ServiAdventures. Your name is Ana. Respond to the player's message in a concise and engaging way. Offer them a simple quest if they seem interested.
-
-If the input is audio, it will be automatically transcribed for you.
-
-Player's message: {{{message}}}{{media url=audioDataUri}}`,
-});
-
 const npcChatFlow = ai.defineFlow(
   {
     name: 'npcChatFlow',
     inputSchema: NpcChatInputSchema,
     outputSchema: NpcChatOutputSchema,
   },
-  async input => {
+  async (input) => {
     if (!input.message && !input.audioDataUri) {
       return { response: "You approached me but didn't say anything." };
     }
-    
-    const {output} = await prompt(input);
-    return output!;
+
+    const systemPrompt = `You are a friendly and slightly mysterious Quest Giver in a fantasy world called ServiAdventures. Your name is Ana. Respond to the player's message in a concise and engaging way. Offer them a simple quest if they seem interested. If the input is audio, it will be automatically transcribed for you.`;
+
+    // Construct the prompt parts for Gemini
+    const userPrompt: any[] = [{ text: "Player's message: " }];
+    if (input.message) {
+      userPrompt.push({ text: input.message });
+    }
+    if (input.audioDataUri) {
+      userPrompt.push({ media: { url: input.audioDataUri } });
+    }
+
+    const { output } = await ai.generate({
+      system: systemPrompt,
+      prompt: userPrompt,
+      output: {
+        schema: NpcChatOutputSchema,
+      },
+    });
+
+    if (!output) {
+      throw new Error("The model did not return a valid response.");
+    }
+
+    return output;
   }
 );
