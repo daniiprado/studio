@@ -73,6 +73,7 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
+  const appRef = useRef<Application | null>(null);
   const propsRef = useRef(props);
   
   useLayoutEffect(() => {
@@ -80,12 +81,15 @@ const PixiCanvas = (props: PixiCanvasProps) => {
   });
 
   useEffect(() => {
+    // This effect hook will run only once on mount, and its cleanup will run on unmount.
+    // This is the core of the stable architecture.
     const pixiElement = pixiContainerRef.current;
-    if (!pixiElement) {
+    if (!pixiElement || appRef.current) {
+        // If the container isn't ready, or the app is already initialized, abort.
         return;
     }
-
-    let isMounted = true;
+    
+    // Create the app instance synchronously.
     const app = new Application();
     
     let tickerCallback: (() => void) | undefined;
@@ -93,6 +97,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
         
+    // --- Start of async initialization ---
     const init = async () => {
       try {
         await app.init({
@@ -101,9 +106,15 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-        if (!isMounted) return;
+
+        // CRITICAL CHECK: After an async operation, confirm the component is still mounted.
+        if (!pixiContainerRef.current) {
+            app.destroy(true, true);
+            return;
+        }
 
         pixiElement.appendChild(app.view);
+        appRef.current = app; // Assign to ref ONLY after successful async init.
         
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
@@ -137,7 +148,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundTexture = await Assets.load(lobbyImage.src);
-        if (!isMounted) return;
+        if (!pixiContainerRef.current) { app.destroy(true, true); return; }
 
         const background = new Sprite(backgroundTexture);
         background.anchor.set(0.5);
@@ -159,12 +170,12 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         enterButton.eventMode = 'static';
         enterButton.cursor = 'pointer';
         enterButton.on('pointertap', () => {
-          if (isMounted) propsRef.current.setGameState('playing');
+          if (pixiContainerRef.current) propsRef.current.setGameState('playing');
         });
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (!isMounted || app.destroyed) return;
+            if (app.destroyed || !pixiContainerRef.current) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
@@ -185,7 +196,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                  if (background.texture.valid) {
                     const bgRatio = background.texture.width / background.texture.height;
                     const screenRatio = screenWidth / screenHeight;
-                    
                     if (bgRatio > screenRatio) { 
                         background.height = screenHeight;
                         background.width = screenHeight * bgRatio;
@@ -206,7 +216,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         resizeHandler();
       
         const updatePlayerInDb = throttle((data: Partial<Player>) => {
-            if (!isMounted) return;
+            if (!pixiContainerRef.current) return;
             const { currentPlayer: localPlayer } = propsRef.current;
             if (!localPlayer) return;
             const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
@@ -217,16 +227,12 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             const playerWidth = 16 * 0.5;
             const playerHeight = 16 * 0.5;
             const bounds = {
-                left: x - playerWidth / 2,
-                right: x + playerWidth / 2,
-                top: y - playerHeight,
-                bottom: y,
+                left: x - playerWidth / 2, right: x + playerWidth / 2,
+                top: y - playerHeight, bottom: y,
             };
             const corners = [
-                { x: bounds.left, y: bounds.top },
-                { x: bounds.right, y: bounds.top },
-                { x: bounds.left, y: bounds.bottom },
-                { x: bounds.right, y: bounds.bottom },
+                { x: bounds.left, y: bounds.top }, { x: bounds.right, y: bounds.top },
+                { x: bounds.left, y: bounds.bottom }, { x: bounds.right, y: bounds.bottom },
             ];
             for (const corner of corners) {
                 const tileX = Math.floor(corner.x / TILE_SIZE);
@@ -239,78 +245,57 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
 
         const npcSprite = await createNpcSprite(world, loadedSheets);
-        if (!isMounted) return;
+        if (!pixiContainerRef.current) { app.destroy(true, true); return; }
         
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let proximityState = false;
 
         tickerCallback = () => {
-            if (!isMounted || app.destroyed) return;
-            
+            if (app.destroyed) return;
             const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
-
             resizeHandler();
-
-            if (currentGameState !== 'playing' || !localPlayer) {
-                return;
-            }
-            
+            if (currentGameState !== 'playing' || !localPlayer) return;
             const playerSprite = playerSprites[localPlayer.uid];
+            if (!playerSprite || !playerSprite.parent) return;
+
+            const speed = 2.5;
+            let dx = 0; let dy = 0;
+            if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
+            if (keysDown['s'] || keysDown['arrowdown']) dy += 1;
+            if (keysDown['a'] || keysDown['arrowleft']) dx -= 1;
+            if (keysDown['d'] || keysDown['arrowright']) dx += 1;
             
-            if (playerSprite && playerSprite.parent) {
-                const speed = 2.5;
-                let dx = 0;
-                let dy = 0;
-
-                if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
-                if (keysDown['s'] || keysDown['arrowdown']) dy += 1;
-                if (keysDown['a'] || keysDown['arrowleft']) dx -= 1;
-                if (keysDown['d'] || keysDown['arrowright']) dx += 1;
-                
-                let newDirection: Player['direction'] = localPlayer.direction;
-                let moved = false;
-
-                const targetX = playerSprite.x + dx * speed;
-                const targetY = playerSprite.y + dy * speed;
-
-                if (targetX !== playerSprite.x || targetY !== playerSprite.y) {
-                    let canMoveX = !checkCollision(targetX, playerSprite.y);
-                    let canMoveY = !checkCollision(playerSprite.x, targetY);
-
-                    if (canMoveX && canMoveY && !checkCollision(targetX, targetY)) {
-                        playerSprite.x = targetX;
-                        playerSprite.y = targetY;
-                        moved = true;
-                    } else if (canMoveX) {
-                        playerSprite.x = targetX;
-                        moved = true;
-                    } else if (canMoveY) {
-                        playerSprite.y = targetY;
-                        moved = true;
+            let newDirection: Player['direction'] = localPlayer.direction;
+            let moved = false;
+            const targetX = playerSprite.x + dx * speed;
+            const targetY = playerSprite.y + dy * speed;
+            if (targetX !== playerSprite.x || targetY !== playerSprite.y) {
+                let canMoveX = !checkCollision(targetX, playerSprite.y);
+                let canMoveY = !checkCollision(playerSprite.x, targetY);
+                if (canMoveX && canMoveY && !checkCollision(targetX, targetY)) {
+                    playerSprite.x = targetX; playerSprite.y = targetY; moved = true;
+                } else if (canMoveX) {
+                    playerSprite.x = targetX; moved = true;
+                } else if (canMoveY) {
+                    playerSprite.y = targetY; moved = true;
+                }
+            }
+            if (moved) {
+                if (dy < 0) newDirection = 'back'; else if (dy > 0) newDirection = 'front';
+                if (dx < 0) newDirection = 'left'; else if (dx > 0) newDirection = 'right';
+                updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+                const sheet = loadedSheets[localPlayer.characterId];
+                if(sheet){
+                    const newAnimationName = `${newDirection}_walk`;
+                    if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
+                        playerSprite.textures = sheet.animations[newAnimationName];
+                        playerSprite.currentAnimationName = newAnimationName;
+                        playerSprite.animationSpeed = 0.15;
                     }
+                    if (!playerSprite.playing) playerSprite.play();
                 }
-
-                if (moved) {
-                  if (dy < 0) newDirection = 'back';
-                  else if (dy > 0) newDirection = 'front';
-                  if (dx < 0) newDirection = 'left';
-                  else if (dx > 0) newDirection = 'right';
-
-                  updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
-
-                  const sheet = loadedSheets[localPlayer.characterId];
-                  if(sheet){
-                      const newAnimationName = `${newDirection}_walk`;
-                      if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
-                          playerSprite.textures = sheet.animations[newAnimationName];
-                          playerSprite.currentAnimationName = newAnimationName;
-                          playerSprite.animationSpeed = 0.15;
-                      }
-                      if (!playerSprite.playing) playerSprite.play();
-                  }
-                } else {
-                    if (playerSprite.playing) playerSprite.gotoAndStop(0);
-                }
+            } else {
+                if (playerSprite.playing) playerSprite.gotoAndStop(0);
             }
             
             updatePlayerSprites(world, [localPlayer, ...currentOnlinePlayers], playerSprites, playerText, loadedSheets, localPlayer.uid);
@@ -334,26 +319,34 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
 
         app.ticker.add(tickerCallback);
+
       } catch (error) {
         console.error("Error during Pixi initialization:", error);
+        // If init fails, ensure we clean up the partially created app
+        if (!app.destroyed) {
+            app.destroy(true, true);
+        }
+        appRef.current = null;
       }
     };
     
     init();
 
+    // --- Start of cleanup logic ---
     return () => {
-      isMounted = false;
+      // This function is guaranteed to run on unmount.
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      
-      if (tickerCallback) {
-        app.ticker.remove(tickerCallback);
-      }
 
-      // Final safeguard: ensure app exists and is not already destroyed.
-      if (app && !app.destroyed) {
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
+      const appToDestroy = appRef.current;
+      if (appToDestroy) {
+        if (tickerCallback) {
+            appToDestroy.ticker.remove(tickerCallback);
+        }
+        // destroy() is safe to call even if already destroyed
+        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
       }
+      appRef.current = null;
     };
   }, []); 
 
