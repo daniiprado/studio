@@ -306,7 +306,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: P
         const playerText = playerTextRef.current[localPlayer.uid];
         if (playerText && !playerText.destroyed) {
           playerText.x = playerSprite.x;
-          playerText.y = playerSprite.y - (playerSprite.height * sprite.scale.y) - 5;
+          playerText.y = playerSprite.y - (playerSprite.height * playerSprite.scale.y) - 5;
         }
         
         if (world) {
