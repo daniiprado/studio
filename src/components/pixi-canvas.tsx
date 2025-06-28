@@ -87,7 +87,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     if (!canvasContainer) return;
 
     let isMounted = true;
-    const app = new Application();
+    let app: Application | null = null;
     
     // PIXI objects, local to the effect
     let world: Container | null = null;
@@ -120,6 +120,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     }, 100);
 
     const init = async () => {
+      app = new Application();
       try {
         await app.init({
             backgroundColor: 0x1099bb,
@@ -129,11 +130,18 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         });
       } catch (e) {
           console.error('Pixi.js init failed', e);
+          if (isMounted && app) {
+            app.destroy(true, {children: true, texture: true, baseTexture: true});
+            app = null;
+          }
           return;
       }
         
       if (!isMounted) {
-        app.destroy(true, {children: true, texture: true, baseTexture: true});
+        if (app) {
+          app.destroy(true, {children: true, texture: true, baseTexture: true});
+          app = null;
+        }
         return;
       }
       canvasContainer.replaceChildren(app.canvas as HTMLCanvasElement);
@@ -184,6 +192,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       lobby.addChild(enterButton);
 
       const resizeHandler = () => {
+        if (!app) return;
         const screenWidth = app.screen.width;
         const screenHeight = app.screen.height;
 
@@ -229,7 +238,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       
       const createNpc = async () => {
         const character = CHARACTERS_MAP[NPC.characterId];
-        if (!character) return;
+        if (!character || !world) return;
         
         if (!loadedSheets[NPC.characterId]) {
             const baseTexture = await Assets.load<Texture>(character.png.src);
@@ -291,7 +300,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       
       // MAIN GAME LOOP
       app.ticker.add(() => {
-        if (!isMounted) return;
+        if (!isMounted || !app) return;
         const { gameState, currentPlayer, onlinePlayers, onProximityChange, npcMessage } = propsRef.current;
 
         // Switch between lobby and world
@@ -304,7 +313,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         const localPlayer = currentPlayer;
         const playerSprite = playerSprites[localPlayer.uid];
         if (playerSprite && playerSprite.parent) {
-            const speed = 2.5;
+            const speed = 2;
             let dx = 0;
             let dy = 0;
 
@@ -316,6 +325,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             const moved = dx !== 0 || dy !== 0;
             if (moved) {
                 let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as any || 'front';
+                
+                if (Math.abs(dy) > Math.abs(dx)) newDirection = dy < 0 ? 'back' : 'front';
+                else if (dx !== 0) newDirection = dx < 0 ? 'left' : 'right';
 
                 const checkCollision = (x: number, y: number): boolean => {
                     const playerWidth = 16 * 0.5;
@@ -323,13 +335,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                     const bounds = {
                         left: x - playerWidth / 2,
                         right: x + playerWidth / 2,
-                        bottom: y + playerHeight / 4,
+                        top: y - playerHeight / 2,
+                        bottom: y, // Feet of the character
                     };
                     const corners = [
-                        { x: bounds.left, y: bounds.bottom - playerHeight / 2 },
-                        { x: bounds.right, y: bounds.bottom - playerHeight / 2 },
-                        { x: bounds.left, y: bounds.bottom },
-                        { x: bounds.right, y: bounds.bottom },
+                      { x: bounds.left, y: bounds.top },
+                      { x: bounds.right, y: bounds.top },
+                      { x: bounds.left, y: bounds.bottom },
+                      { x: bounds.right, y: bounds.bottom },
                     ];
                     for (const corner of corners) {
                         const tileX = Math.floor(corner.x / TILE_SIZE);
@@ -343,7 +356,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
                 let targetX = playerSprite.x + dx * speed;
                 let targetY = playerSprite.y + dy * speed;
-
+                
+                // Move on each axis separately to allow sliding
                 if (!checkCollision(targetX, playerSprite.y)) {
                     playerSprite.x = targetX;
                 }
@@ -351,9 +365,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                     playerSprite.y = targetY;
                 }
                 
-                if (Math.abs(dy) > Math.abs(dx)) newDirection = dy < 0 ? 'back' : 'front';
-                else if (dx !== 0) newDirection = dx < 0 ? 'left' : 'right';
-
                 updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
             }
 
@@ -387,7 +398,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         
         // Add/Update players
         playersToRender.forEach(async player => {
-            if(!player.characterId) return;
+            if(!player.characterId || !world) return;
             if(!loadedSheets[player.characterId]){
                 const character = CHARACTERS_MAP[player.characterId];
                 if(character){
@@ -500,7 +511,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                 }, 5000);
                  propsRef.current.npcMessage = null; // Consume the message
             } else {
-                bubble.container.visible = false;
+                if(!chatTimeout) bubble.container.visible = false;
             }
         }
       });
@@ -514,7 +525,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       window.removeEventListener('keyup', onKeyUp);
       if (chatTimeout) clearTimeout(chatTimeout);
       // Safely destroy the app, which also destroys its children and textures.
-      app.destroy(true, { children: true, texture: true, baseTexture: true });
+      if (app) {
+        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        app = null;
+      }
     };
   }, []); // <-- Empty dependency array ensures this runs only once
 
@@ -522,5 +536,3 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 };
 
 export default PixiCanvas;
-
-    
