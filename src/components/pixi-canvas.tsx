@@ -58,7 +58,7 @@ const mapLayout = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ];
 
-const TILE_COLORS = { 0: 0x228B22, 1: 0x4a4a4a, 2: 0xD3D3D3, 3: 0x8B4513 };
+const TILE_COLORS = { 0: 0x60bb38, 1: 0x4a4a4a, 2: 0xD3D3D3, 3: 0x8B4513 };
 
 const NPC = {
   uid: 'npc-quest-giver',
@@ -97,7 +97,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       try {
         await app.init({
             resizeTo: pixiElement,
-            backgroundColor: 0x1099bb,
+            backgroundColor: 0x60bb38,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
@@ -444,7 +444,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     };
   }, []); 
 
-  return <div ref={pixiContainerRef} className="absolute inset-0" />;
+  return <div ref={pixiContainerRef} className="absolute inset-0 z-10" />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
