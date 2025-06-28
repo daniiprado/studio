@@ -91,12 +91,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   const npcChatBubbleRef = useRef<{ container: Container, text: Text, background: Graphics } | null>(null);
   const chatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-
+  // Use refs for props to ensure the main useEffect doesn't re-run
   const onProximityChangeRef = useRef(onProximityChange);
-  useEffect(() => {
-    onProximityChangeRef.current = onProximityChange;
-  }, [onProximityChange]);
+  useEffect(() => { onProximityChangeRef.current = onProximityChange; }, [onProximityChange]);
 
+  const setGameStateRef = useRef(setGameState);
+  useEffect(() => { setGameStateRef.current = setGameState; }, [setGameState]);
 
   useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -190,7 +190,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   useEffect(() => {
     if (!pixiContainer.current) return;
     
-    let app: Application | null = new Application();
+    const app = new Application();
     appRef.current = app;
 
     const onKeyDown = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = true; };
@@ -199,7 +199,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     window.addEventListener('keyup', onKeyUp);
 
     const initPixi = async () => {
-      if (!app) return;
       await app.init({
         backgroundColor: 0x1099bb,
         resizeTo: pixiContainer.current!,
@@ -207,7 +206,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         resolution: window.devicePixelRatio || 1,
       });
 
-      if (!pixiContainer.current || !app) return;
+      if (!pixiContainer.current) return;
       pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
 
       const world = new Container();
@@ -254,11 +253,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       enterButton.addChild(buttonGraphic, buttonText);
       enterButton.eventMode = 'static';
       enterButton.cursor = 'pointer';
-      enterButton.on('pointertap', () => setGameState('playing'));
+      enterButton.on('pointertap', () => setGameStateRef.current('playing'));
       lobbyContainer.addChild(enterButton);
       
       const resizeHandler = () => {
-        if (!app) return;
         const screenWidth = app.screen.width;
         const screenHeight = app.screen.height;
 
@@ -278,7 +276,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
             enterButton.position.set(
                 screenWidth / 2 - enterButton.width / 2,
-                screenHeight / 2 - enterButton.height / 2 + 50
+                screenHeight / 2 - enterButton.height / 2
             );
         }
         
@@ -289,7 +287,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
             const scaleX = screenWidth / worldWidth;
             const scaleY = screenHeight / worldHeight;
-            const scale = Math.max(scaleX, scaleY);
+            const scale = Math.min(scaleX, scaleY); // Use Math.min to fit inside
 
             worldContainer.scale.set(scale);
             worldContainer.x = (screenWidth - (worldWidth * scale)) / 2;
@@ -379,43 +377,44 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
           return;
         }
         
-        const speed = 2.5;
+        const speed = 1.5;
         let dx = 0;
         let dy = 0;
-
+        
         if (keysDown.current['w'] || keysDown.current['arrowup']) dy -= 1;
         if (keysDown.current['s'] || keysDown.current['arrowdown']) dy += 1;
         if (keysDown.current['a'] || keysDown.current['arrowleft']) dx -= 1;
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
         
         let moved = false;
-        let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as Player['direction']) || 'front';
-
+        let newDirection: Player['direction'] = localPlayer.direction;
+        
         if (dx !== 0 || dy !== 0) {
-          moved = true;
-          if (dx !== 0 && dy !== 0) {
+            moved = true;
+            if (dx !== 0 && dy !== 0) {
               const magnitude = Math.sqrt(dx * dx + dy * dy);
               dx = (dx / magnitude);
               dy = (dy / magnitude);
-          }
-
-          const nextX = playerSprite.x + dx * speed;
-          const nextY = playerSprite.y + dy * speed;
-
-          if (!checkCollision(nextX, playerSprite.y)) {
+            }
+        
+            const nextX = playerSprite.x + dx * speed;
+            const nextY = playerSprite.y + dy * speed;
+        
+            if (!checkCollision(nextX, playerSprite.y)) {
               playerSprite.x = nextX;
-          }
-          if (!checkCollision(playerSprite.x, nextY)) {
+            }
+            if (!checkCollision(playerSprite.x, nextY)) {
               playerSprite.y = nextY;
+            }
+        
+            if (Math.abs(dy) > Math.abs(dx)) {
+              newDirection = dy < 0 ? 'back' : 'front';
+            } else if (dx !== 0) {
+              newDirection = dx < 0 ? 'left' : 'right';
+            }
+            updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
           }
 
-          if (Math.abs(dy) > Math.abs(dx)) {
-            newDirection = dy < 0 ? 'back' : 'front';
-          } else if (dx !== 0) {
-            newDirection = dx < 0 ? 'left' : 'right';
-          }
-          updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
-        }
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
         const newAnimationName = `${newDirection}_walk`;
@@ -465,10 +464,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      if (app) {
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
-        app = null;
-      }
+      
+      app.destroy(true, { children: true, texture: true, baseTexture: true });
+
       appRef.current = null;
       worldRef.current = null;
       lobbyRef.current = null;
@@ -482,7 +480,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         clearTimeout(chatTimeoutRef.current);
       }
     };
-  }, [setGameState, updatePlayerInDb, onProximityChange]);
+  }, [updatePlayerInDb]);
 
   useEffect(() => {
     if (!isPixiInitialized) return;
