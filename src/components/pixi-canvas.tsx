@@ -73,18 +73,19 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
-  
+  const appRef = useRef<Application | null>(null);
+
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
   useLayoutEffect(() => {
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
   });
 
   useEffect(() => {
-    if (!pixiContainer.current) return;
+    if (!pixiContainer.current) {
+        return;
+    }
 
-    let app: Application | null = new Application();
     const keysDown: Record<string, boolean> = {};
-
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     
@@ -92,14 +93,26 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     window.addEventListener('keyup', onKeyUp);
     
     const initPixi = async () => {
-        if (!app || !pixiContainer.current) return;
+        if (!pixiContainer.current || appRef.current) {
+             return;
+        }
         
+        const app = new Application();
+        appRef.current = app;
+
         await app.init({
             backgroundColor: 0x1099bb,
             resizeTo: pixiContainer.current,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
+
+        if (!pixiContainer.current) {
+            app.destroy(true);
+            appRef.current = null;
+            return;
+        }
+        
         pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
         
         const world = new Container();
@@ -112,7 +125,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
         for (let y = 0; y < MAP_HEIGHT_TILES; y++) {
             for (let x = 0; x < MAP_WIDTH_TILES; x++) {
-                const tileType = mapLayout[y][x] as keyof typeof TILE_COLORS;
+                const tileType = mapLayout[y]?.[x] as keyof typeof TILE_COLORS ?? 0;
                 const tile = new Sprite(Texture.WHITE);
                 tile.tint = TILE_COLORS[tileType];
                 tile.width = TILE_SIZE;
@@ -152,9 +165,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (!app) return;
-            const screenWidth = app.screen.width;
-            const screenHeight = app.screen.height;
+            if (!appRef.current) return;
+            const screenWidth = appRef.current.screen.width;
+            const screenHeight = appRef.current.screen.height;
 
             const { gameState } = propsRef.current;
             const isPlaying = gameState === 'playing';
@@ -207,12 +220,37 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         update(playerRef, data);
       }, 100);
 
+      const checkCollision = (x: number, y: number): boolean => {
+        const playerWidth = 16 * 0.5;
+        const playerHeight = 16 * 0.5;
+        const bounds = {
+            left: x - playerWidth / 2,
+            right: x + playerWidth / 2,
+            top: y - playerHeight,
+            bottom: y,
+        };
+        const corners = [
+            { x: bounds.left, y: bounds.top },
+            { x: bounds.right, y: bounds.top },
+            { x: bounds.left, y: bounds.bottom },
+            { x: bounds.right, y: bounds.bottom },
+        ];
+        for (const corner of corners) {
+            const tileX = Math.floor(corner.x / TILE_SIZE);
+            const tileY = Math.floor(corner.y / TILE_SIZE);
+            if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return true;
+            const tileType = mapLayout[tileY]?.[tileX];
+            if (tileType === 1 || tileType === 3) return true;
+        }
+        return false;
+      };
+
       const npcSprite = await createNpcSprite(world, loadedSheets);
       const npcProximityIndicator = createNpcProximityIndicator(world);
       let proximityState = false;
 
       app.ticker.add(() => {
-        if (!app) return;
+        if (!appRef.current) return;
         const { gameState, currentPlayer, onlinePlayers, onProximityChange } = propsRef.current;
 
         const isPlaying = gameState === 'playing';
@@ -238,59 +276,31 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             if (keysDown['d'] || keysDown['arrowright']) dx += 1;
             
             let newDirection: Player['direction'] = localPlayer.direction;
-            
-            const checkCollision = (x: number, y: number): boolean => {
-              const playerWidth = 16 * 0.5;
-              const playerHeight = 16 * 0.5;
-              const bounds = {
-                  left: x - playerWidth / 2,
-                  right: x + playerWidth / 2,
-                  top: y - playerHeight,
-                  bottom: y,
-              };
-              const corners = [
-                  { x: bounds.left, y: bounds.top },
-                  { x: bounds.right, y: bounds.top },
-                  { x: bounds.left, y: bounds.bottom },
-                  { x: bounds.right, y: bounds.bottom },
-              ];
-              for (const corner of corners) {
-                  const tileX = Math.floor(corner.x / TILE_SIZE);
-                  const tileY = Math.floor(corner.y / TILE_SIZE);
-                  if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return true;
-                  const tileType = mapLayout[tileY]?.[tileX];
-                  if (tileType === 1 || tileType === 3) return true;
-              }
-              return false;
-            };
-  
-            let targetX = playerSprite.x;
-            let targetY = playerSprite.y;
             let moved = false;
-  
-            if (dx !== 0) {
-              if (!checkCollision(playerSprite.x + dx * speed, playerSprite.y)) {
-                targetX += dx * speed;
-                moved = true;
-              }
+            
+            let targetX = playerSprite.x + dx * speed;
+            let targetY = playerSprite.y + dy * speed;
+
+            // Check X and Y axis separately for wall sliding
+            let movedX = false;
+            let movedY = false;
+
+            if (dx !== 0 && !checkCollision(playerSprite.x + dx * speed, playerSprite.y)) {
+              playerSprite.x += dx * speed;
+              movedX = true;
             }
-            if (dy !== 0) {
-              if (!checkCollision(targetX, playerSprite.y + dy * speed)) {
-                targetY += dy * speed;
-                moved = true;
-              } else if (!checkCollision(playerSprite.x, playerSprite.y + dy * speed)) {
-                targetY += dy * speed;
-                moved = true;
-              }
+
+            if (dy !== 0 && !checkCollision(playerSprite.x, playerSprite.y + dy * speed)) {
+              playerSprite.y += dy * speed;
+              movedY = true;
             }
             
-            playerSprite.x = targetX;
-            playerSprite.y = targetY;
+            moved = movedX || movedY;
 
             if (moved) {
-                if (Math.abs(dy) > Math.abs(dx)) {
+                if (movedY) {
                     newDirection = dy < 0 ? 'back' : 'front';
-                } else if (dx !== 0) {
+                } else if (movedX) {
                     newDirection = dx < 0 ? 'left' : 'right';
                 }
 
@@ -337,9 +347,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      if (app) {
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
-        app = null;
+      
+      if (appRef.current) {
+        appRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
+        appRef.current = null;
       }
     };
   }, []);
