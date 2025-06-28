@@ -5,7 +5,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
-import { Loader2, LogOut, MessageSquare, Mic, PanelRightOpen, PanelRightClose, PersonStanding, MicOff } from 'lucide-react';
+import { Loader2, LogOut, MessageSquare, Mic, PanelRightOpen, PanelRightClose, PersonStanding, MicOff, Video } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import RightSidebar from '@/components/right-sidebar';
 import {
@@ -24,6 +24,8 @@ import { rtdb } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
 import dynamic from 'next/dynamic';
 import CharacterSelectionDialog from '@/components/character-selection-dialog';
+import { npcChat } from '@/ai/flows/npc-chat-flow';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const PixiCanvas = dynamic(() => import('@/components/pixi-canvas'), {
   ssr: false,
@@ -49,6 +51,8 @@ export default function GameClient() {
   // Chat state
   const [chatInput, setChatInput] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [npcResponse, setNpcResponse] = useState<string | null>(null);
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -56,7 +60,11 @@ export default function GameClient() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-
+  
+  // Camera state
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -84,26 +92,64 @@ export default function GameClient() {
     return () => unsubscribe();
   }, [user]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-    
-    // Reverted: This feature was causing instability.
-    console.log("Message sent:", chatInput);
-    toast({
-        title: 'Feature Disabled',
-        description: 'The NPC chat feature is temporarily disabled.',
-        variant: 'destructive',
-    });
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    const getCameraPermission = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setHasCameraPermission(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please enable camera permissions in your browser settings.',
+        });
+      }
+    };
+    if (isCameraOpen) {
+      getCameraPermission();
+    }
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [isCameraOpen, toast]);
 
-    setChatInput('');
-    setIsChatOpen(false);
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isSubmitting) return;
+    
+    setIsSubmitting(true);
+    setNpcResponse(null);
+    try {
+      const result = await npcChat({ message: chatInput });
+      setNpcResponse(result.response);
+      setChatInput('');
+    } catch (error) {
+      console.error('Error in text chat:', error);
+      toast({
+        title: 'An error occurred',
+        description: 'The NPC is busy right now, try again later.',
+        variant: 'destructive',
+      });
+      setNpcResponse('The Quest Giver seems to be lost in thought...');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleVoiceChatClick = async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
-      setIsRecording(false);
       return;
     }
 
@@ -121,7 +167,7 @@ export default function GameClient() {
       mediaStreamRef.current = stream;
       setHasMicPermission(true);
       
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
@@ -130,12 +176,31 @@ export default function GameClient() {
       };
 
       recorder.onstop = () => {
-        // Reverted: This feature was causing instability.
-        toast({
-            title: 'Feature Disabled',
-            description: 'The NPC voice chat feature is temporarily disabled.',
-            variant: 'destructive',
-        });
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          try {
+            const base64data = reader.result as string;
+            setIsSubmitting(true);
+            const result = await npcChat({ audioDataUri: base64data });
+            toast({
+              title: "Quest Giver says...",
+              description: result.response,
+              duration: 5000,
+            });
+          } catch(err) {
+            console.error('Error sending voice chat:', err);
+            toast({
+              title: 'An error occurred',
+              description: 'The NPC did not hear you, try again.',
+              variant: 'destructive',
+            });
+          } finally {
+            setIsSubmitting(false);
+          }
+        }
+        
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
         setIsRecording(false);
@@ -147,6 +212,7 @@ export default function GameClient() {
     } catch (error) {
       console.error('Error accessing microphone:', error);
       setHasMicPermission(false);
+      setIsRecording(false);
       toast({
         variant: 'destructive',
         title: 'Microphone Access Denied',
@@ -154,7 +220,6 @@ export default function GameClient() {
       });
     }
   };
-
 
   if (loading || !user || !player) {
     return (
@@ -219,10 +284,27 @@ export default function GameClient() {
                     setGameState={setGameState}
                     onProximityChange={setIsNearNpc}
                 />
+                
+                {isCameraOpen && (
+                  <div className="absolute top-4 left-4 z-20 w-64 bg-black/50 p-2 rounded-lg border border-border">
+                    <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
+                    {hasCameraPermission === false && (
+                        <Alert variant="destructive" className="mt-2">
+                          <AlertTitle>Camera Access Required</AlertTitle>
+                          <AlertDescription>
+                            Please allow camera access to use this feature.
+                          </AlertDescription>
+                        </Alert>
+                    )}
+                  </div>
+                )}
 
                 <footer className="absolute bottom-0 left-1/2 -translate-x-1/2 z-10 p-4">
                     <div className="flex items-center gap-2 rounded-full bg-card/50 px-4 py-2 border border-border backdrop-blur-sm">
-                        <Popover open={isChatOpen} onOpenChange={setIsChatOpen}>
+                        <Popover open={isChatOpen} onOpenChange={(open) => {
+                            setIsChatOpen(open);
+                            if (!open) setNpcResponse(null);
+                        }}>
                             <PopoverTrigger asChild>
                                 <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={() => setIsChatOpen(true)}>
                                     <MessageSquare/>
@@ -241,14 +323,33 @@ export default function GameClient() {
                                             placeholder="Hello there!" 
                                             value={chatInput} 
                                             onChange={(e) => setChatInput(e.target.value)} 
+                                            disabled={isSubmitting}
                                         />
-                                        <Button type="submit">Send</Button>
+                                        <Button type="submit" disabled={isSubmitting}>
+                                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                            Send
+                                        </Button>
                                     </div>
                                 </form>
+                                {isSubmitting && !npcResponse && (
+                                    <div className="mt-4 text-sm p-3 flex items-center justify-center">
+                                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                                    <p className="ml-2 text-muted-foreground">Thinking...</p>
+                                    </div>
+                                )}
+                                {npcResponse && (
+                                    <div className="mt-4 text-sm p-3 bg-muted rounded-md border">
+                                        <p className="font-semibold text-accent">Quest Giver:</p>
+                                        <p className="text-foreground/90 whitespace-pre-wrap">{npcResponse}</p>
+                                    </div>
+                                )}
                             </PopoverContent>
                         </Popover>
-                        <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={handleVoiceChatClick}>
-                            {isRecording ? <MicOff className="text-destructive"/> : <Mic/>}
+                        <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing' || isSubmitting} onClick={handleVoiceChatClick}>
+                            {isRecording ? <MicOff className="text-destructive"/> : (isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic/>)}
+                        </Button>
+                        <Button size="icon" variant={isCameraOpen ? "secondary" : "ghost"} className="rounded-full hover:bg-accent/20" disabled={gameState !== 'playing'} onClick={() => setIsCameraOpen(prev => !prev)}>
+                            <Video/>
                         </Button>
                     </div>
                 </footer>
