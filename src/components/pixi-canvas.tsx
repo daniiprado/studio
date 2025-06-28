@@ -74,15 +74,12 @@ const PROXIMITY_RANGE = 50;
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
   
-  // Create a ref to hold the latest props. This is the key to solving the stale state issue in the ticker.
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
   useLayoutEffect(() => {
-    // Update the ref with the latest props on every render.
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
   });
 
   useEffect(() => {
-    // This effect runs ONLY ONCE on mount and cleans up ONLY ONCE on unmount.
     if (!pixiContainer.current) {
       return;
     }
@@ -107,9 +104,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             resolution: window.devicePixelRatio || 1,
         });
 
-        // Check if component unmounted while we were initializing
         if (!isMounted || !pixiContainer.current) {
-            app.destroy(true, { children: true, texture: true, baseTexture: true });
+            if (app) {
+              app.destroy(true, { children: true, texture: true, baseTexture: true });
+            }
             app = null;
             return;
         }
@@ -161,7 +159,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         enterButton.eventMode = 'static';
         enterButton.cursor = 'pointer';
         enterButton.on('pointertap', () => {
-          // Use the function from the ref to ensure we're calling the latest version
           propsRef.current.setGameState('playing');
         });
         lobby.addChild(enterButton);
@@ -180,7 +177,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                 const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
                 const scaleX = screenWidth / worldWidth;
                 const scaleY = screenHeight / worldHeight;
-                const scale = Math.max(1, Math.min(scaleX, scaleY)); // Ensure it scales down but doesn't get too small
+                const scale = Math.max(1, Math.min(scaleX, scaleY));
                 world.scale.set(scale);
                 world.x = (screenWidth - (worldWidth * scale)) / 2;
                 world.y = (screenHeight - (worldHeight * scale)) / 2;
@@ -213,7 +210,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       const loadedSheets: Record<string, Spritesheet> = {};
       
       const updatePlayerInDb = throttle((data: Partial<Player>) => {
-        // Always read the latest player from the ref
         const { currentPlayer: localPlayer } = propsRef.current;
         if (!localPlayer) return;
 
@@ -258,7 +254,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         lobby.visible = currentGameState === 'lobby';
         
         if (currentGameState !== 'playing') {
-             resizeHandler(); // Keep lobby resized
+             resizeHandler();
              return;
         }
         
