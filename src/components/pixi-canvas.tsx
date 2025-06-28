@@ -114,10 +114,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     if (npcMessage) {
       bubble.text.text = npcMessage;
       
-      const textMetrics = Text.measureText({text: npcMessage, style: bubble.text.style as TextStyle});
       const padding = 10;
-      const bubbleWidth = textMetrics.width + padding * 2;
-      const bubbleHeight = textMetrics.height + padding * 2;
+      const bubbleWidth = bubble.text.width + padding * 2;
+      const bubbleHeight = bubble.text.height + padding * 2;
 
       bubble.background.clear();
       bubble.background.roundRect(0, 0, bubbleWidth, bubbleHeight, 8).fill({color: 0x000000, alpha: 0.7});
@@ -155,34 +154,41 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   }, 100), []);
   
   const checkCollision = (x: number, y: number): boolean => {
-    const playerWidth = 16 * 0.5; 
+    const playerWidth = 16 * 0.5;
     const playerHeight = 32 * 0.5; 
 
+    // Bounding box for collision is at the player's feet
     const bounds = {
       left: x - playerWidth / 2,
       right: x + playerWidth / 2,
       bottom: y + playerHeight / 4,
     };
-
+    
+    // Check the four corners of the player's collision bounding box feet
     const corners = [
-      { x: bounds.left, y: bounds.bottom - playerHeight / 2 }, 
-      { x: bounds.right, y: bounds.bottom - playerHeight / 2 },
-      { x: bounds.left, y: bounds.bottom },
-      { x: bounds.right, y: bounds.bottom },
+        // Top-left foot corner
+        { x: bounds.left, y: bounds.bottom - playerHeight / 2 },
+        // Top-right foot corner
+        { x: bounds.right, y: bounds.bottom - playerHeight / 2 },
+        // Bottom-left foot corner
+        { x: bounds.left, y: bounds.bottom },
+        // Bottom-right foot corner
+        { x: bounds.right, y: bounds.bottom },
     ];
 
+
     for (const corner of corners) {
-      const tileX = Math.floor(corner.x / TILE_SIZE);
-      const tileY = Math.floor(corner.y / TILE_SIZE);
+        const tileX = Math.floor(corner.x / TILE_SIZE);
+        const tileY = Math.floor(corner.y / TILE_SIZE);
 
-      if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) {
-        return true; 
-      }
+        if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) {
+            return true; // Collision with map boundaries
+        }
 
-      const tileType = mapLayout[tileY]?.[tileX];
-      if (tileType === 1 || tileType === 3) {
-        return true;
-      }
+        const tileType = mapLayout[tileY]?.[tileX];
+        if (tileType === 1 || tileType === 3) {
+            return true; // Collision with wall or other unwalkable tile
+        }
     }
     return false;
   };
@@ -191,8 +197,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     if (!pixiContainer.current || appRef.current) return;
 
     const app = new Application();
+    appRef.current = app;
+
     const onKeyDown = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = false; };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
 
     const initPixi = async () => {
       await app.init({
@@ -202,7 +212,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         resolution: window.devicePixelRatio || 1,
       });
 
-      appRef.current = app;
       if (!pixiContainer.current) return;
       pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
 
@@ -236,8 +245,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       lobbyContainer.addChild(background);
 
       const buttonGraphic = new Graphics();
-      buttonGraphic.roundRect(0, 0, 220, 70, 15).fill({ color: 0x000000, alpha: 0.6 });
-      buttonGraphic.stroke({ width: 3, color: 0xffffff });
+      buttonGraphic.roundRect(0, 0, 220, 70, 15).fill({ color: 0xBF00FF, alpha: 0.8 });
+      buttonGraphic.stroke({ width: 3, color: 0xFFFFFF });
 
       const buttonText = new Text({
         text: 'ENTRAR',
@@ -276,7 +285,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                 screenHeight / 2 - enterButton.height / 2
             );
         }
-
+        
         if (worldRef.current) {
             const worldContainer = worldRef.current;
             const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
@@ -364,9 +373,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       
       await createNpc();
 
-      window.addEventListener('keydown', onKeyDown);
-      window.addEventListener('keyup', onKeyUp);
-
       app.ticker.add(() => {
         if (gameStateRef.current !== 'playing') return;
         
@@ -374,7 +380,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
         if (!playerSprite || playerSprite.destroyed) return;
         
-        const speed = 2.5;
+        const speed = 1.5;
         let dx = 0;
         let dy = 0;
 
@@ -387,31 +393,32 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as Player['direction']) || 'front';
 
         if (dx !== 0 || dy !== 0) {
-          const magnitude = Math.sqrt(dx * dx + dy * dy);
-          const normalizedDx = dx / magnitude;
-          const normalizedDy = dy / magnitude;
-          
-          const nextX = playerSprite.x + normalizedDx * speed;
-          const nextY = playerSprite.y + normalizedDy * speed;
+          moved = true;
+          // Diagonal movement normalization
+          if (dx !== 0 && dy !== 0) {
+              const magnitude = Math.sqrt(dx * dx + dy * dy);
+              dx = (dx / magnitude);
+              dy = (dy / magnitude);
+          }
 
-          if (dx !== 0 && !checkCollision(nextX, playerSprite.y)) {
+          const nextX = playerSprite.x + dx * speed;
+          const nextY = playerSprite.y + dy * speed;
+
+          // Check X and Y axis separately for smooth wall sliding
+          if (!checkCollision(nextX, playerSprite.y)) {
               playerSprite.x = nextX;
-              moved = true;
           }
 
-          if (dy !== 0 && !checkCollision(playerSprite.x, nextY)) {
+          if (!checkCollision(playerSprite.x, nextY)) {
               playerSprite.y = nextY;
-              moved = true;
           }
 
-          if (moved) {
-            if (Math.abs(dy) > Math.abs(dx)) {
-              newDirection = dy < 0 ? 'back' : 'front';
-            } else if (dx !== 0) {
-              newDirection = dx < 0 ? 'left' : 'right';
-            }
-            updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+          if (Math.abs(dy) > Math.abs(dx)) {
+            newDirection = dy < 0 ? 'back' : 'front';
+          } else if (dx !== 0) {
+            newDirection = dx < 0 ? 'left' : 'right';
           }
+          updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
         }
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
