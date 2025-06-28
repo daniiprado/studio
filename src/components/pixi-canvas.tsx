@@ -73,7 +73,6 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
   
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
   useLayoutEffect(() => {
@@ -82,21 +81,19 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
   useEffect(() => {
     let app: Application | null = null;
-    const playerSprites: Record<string, PlayerSprite> = {};
-    const playerText: Record<string, Text> = {};
-    const loadedSheets: Record<string, Spritesheet> = {};
+    let tickerCallback = () => {};
     const keysDown: Record<string, boolean> = {};
 
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     
-    let tickerCallback = () => {};
-
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    
     const initPixi = async () => {
-        if (!pixiContainer.current) return;
+      if (!pixiContainer.current) return;
         
         app = new Application();
-        appRef.current = app;
         
         await app.init({
             backgroundColor: 0x1099bb,
@@ -106,6 +103,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         });
         
         pixiContainer.current.appendChild(app.canvas as HTMLCanvasElement);
+        
+        const playerSprites: Record<string, PlayerSprite> = {};
+        const playerText: Record<string, Text> = {};
+        const loadedSheets: Record<string, Spritesheet> = {};
         
         const world = new Container();
         app.stage.addChild(world);
@@ -157,9 +158,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (!appRef.current) return;
-            const screenWidth = appRef.current.screen.width;
-            const screenHeight = appRef.current.screen.height;
+            if (!app) return;
+            const screenWidth = app.screen.width;
+            const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
             
             world.visible = currentGameState === 'playing';
@@ -235,7 +236,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         let proximityState = false;
 
         tickerCallback = () => {
-            if (!appRef.current) return;
+            if (!app || app.destroyed) return;
             const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
 
             world.visible = currentGameState === 'playing';
@@ -318,8 +319,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         };
 
         app.ticker.add(tickerCallback);
-        window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('keyup', onKeyUp);
     };
 
     initPixi();
@@ -327,10 +326,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      if (appRef.current) {
-        if(tickerCallback) appRef.current.ticker.remove(tickerCallback);
-        appRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
-        appRef.current = null;
+      if (app) {
+        app.ticker.remove(tickerCallback);
+        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        app = null;
       }
     };
   }, []);
