@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
@@ -12,6 +12,8 @@ import { throttle } from 'lodash';
 interface PixiCanvasProps {
   currentPlayer: Player;
   onlinePlayers: Player[];
+  gameState: 'lobby' | 'playing';
+  setGameState: (state: 'lobby' | 'playing') => void;
 }
 
 type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterId?: string; };
@@ -62,7 +64,7 @@ const TILE_COLORS = {
   3: 0x8B4513, // Desk
 };
 
-const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
+const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
@@ -71,7 +73,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
   const playerTextRef = useRef<Record<string, Text>>({});
   const loadedSheetsRef = useRef<Record<string, Spritesheet>>({});
   const keysDown = useRef<Record<string, boolean>>({});
-  const [gameState, setGameState] = useState<'lobby' | 'playing'>('lobby');
   
   const currentPlayerRef = useRef(currentPlayer);
   useEffect(() => {
@@ -87,9 +88,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
     const localPlayer = currentPlayerRef.current;
     if (!localPlayer) return;
 
-    // Final safeguard before DB update
     if ((data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y)))) {
-      // Silently abort if data is invalid
       return;
     }
 
@@ -167,6 +166,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
 
       const lobbyContainer = new Container();
       lobbyRef.current = lobbyContainer;
+      
+      const backgroundTexture = await Assets.load('https://placehold.co/1920x1080.png?text=ServiAdventures&data-ai-hint=pixel+art');
+      const background = new Sprite(backgroundTexture);
+      background.anchor.set(0.5);
+      lobbyContainer.addChild(background);
 
       const buttonGraphic = new Graphics();
       buttonGraphic.roundRect(0, 0, 220, 70, 15).fill({ color: 0x000000, alpha: 0.6 });
@@ -181,7 +185,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       
       const enterButton = new Container();
       enterButton.addChild(buttonGraphic, buttonText);
-      enterButton.position.set(app.screen.width / 2 - buttonGraphic.width / 2, app.screen.height / 2 - buttonGraphic.height / 2);
       enterButton.eventMode = 'static';
       enterButton.cursor = 'pointer';
 
@@ -193,11 +196,26 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
       lobbyContainer.addChild(enterButton);
       
       const resizeHandler = () => {
+        const screenWidth = app.screen.width;
+        const screenHeight = app.screen.height;
+
+        const screenRatio = screenWidth / screenHeight;
+        const bgRatio = backgroundTexture.width / backgroundTexture.height;
+        if (screenRatio > bgRatio) {
+            background.width = screenWidth;
+            background.height = screenWidth / bgRatio;
+        } else {
+            background.height = screenHeight;
+            background.width = screenHeight * bgRatio;
+        }
+        background.position.set(screenWidth / 2, screenHeight / 2);
+
         if (lobbyContainer.parent) {
-            enterButton.position.set(app.screen.width / 2 - enterButton.width / 2, app.screen.height / 2 - enterButton.height / 2);
+            enterButton.position.set(screenWidth / 2 - enterButton.width / 2, screenHeight / 2 - enterButton.height / 2);
         }
       };
       app.renderer.on('resize', resizeHandler);
+      resizeHandler();
 
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
@@ -209,16 +227,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         if (!localPlayer) return;
 
         const playerSprite = playerSpritesRef.current[localPlayer.uid];
-        
         if (!playerSprite || playerSprite.destroyed) return;
         
-        // Self-healing mechanism for invalid coordinates
         if (isNaN(playerSprite.x) || isNaN(playerSprite.y)) {
-            playerSprite.x = localPlayer.x ?? 0;
-            playerSprite.y = localPlayer.y ?? 0;
-            // If still NaN, reset to a safe default
-            if (isNaN(playerSprite.x)) playerSprite.x = 0;
-            if (isNaN(playerSprite.y)) playerSprite.y = 0;
+            playerSprite.x = localPlayer.x ?? 150;
+            playerSprite.y = localPlayer.y ?? 400;
         }
 
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
@@ -236,14 +249,12 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
         const oldX = playerSprite.x;
         const oldY = playerSprite.y;
         
-        // Use time.deltaTime for frame-rate independent movement
         let newX = playerSprite.x + dx * speed * time.deltaTime;
         let newY = playerSprite.y + dy * speed * time.deltaTime;
         
         if (!checkCollision(newX, playerSprite.y, playerSprite.width, playerSprite.height)) {
           playerSprite.x = newX;
         }
-
         if (!checkCollision(playerSprite.x, newY, playerSprite.width, playerSprite.height)) {
           playerSprite.y = newY;
         }
@@ -257,7 +268,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers }: PixiCanvasProps) => {
           else if (dx < 0) { newDirection = 'left'; }
           else if (dx > 0) { newDirection = 'right'; }
             
-          // Final validation before sending to DB
           if (!isNaN(playerSprite.x) && !isNaN(playerSprite.y)) {
             updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
           }
