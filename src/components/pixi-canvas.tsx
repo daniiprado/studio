@@ -83,23 +83,23 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   const keysDown = useRef<Record<string, boolean>>({});
   
   const [isPixiInitialized, setPixiInitialized] = useState(false);
+  
+  // Use refs for props to ensure the main useEffect doesn't re-run
   const currentPlayerRef = useRef(currentPlayer);
   const gameStateRef = useRef(gameState);
   const proximityStateRef = useRef(false);
+  const onProximityChangeRef = useRef(onProximityChange);
+  const setGameStateRef = useRef(setGameState);
+
   const npcSpriteRef = useRef<PlayerSprite | null>(null);
   const npcProximityIndicatorRef = useRef<Graphics | null>(null);
   const npcChatBubbleRef = useRef<{ container: Container, text: Text, background: Graphics } | null>(null);
   const chatTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Use refs for props to ensure the main useEffect doesn't re-run
-  const onProximityChangeRef = useRef(onProximityChange);
-  useEffect(() => { onProximityChangeRef.current = onProximityChange; }, [onProximityChange]);
-
-  const setGameStateRef = useRef(setGameState);
-  useEffect(() => { setGameStateRef.current = setGameState; }, [setGameState]);
-
   useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+  useEffect(() => { onProximityChangeRef.current = onProximityChange; }, [onProximityChange]);
+  useEffect(() => { setGameStateRef.current = setGameState; }, [setGameState]);
 
   useEffect(() => {
     if (!isPixiInitialized || !npcChatBubbleRef.current || !npcSpriteRef.current) return;
@@ -137,76 +137,77 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     }
 
   }, [npcMessage, isPixiInitialized]);
-
-
-  const updatePlayerInDb = useCallback(throttle(async (data: Partial<Player>) => {
-    const localPlayer = currentPlayerRef.current;
-    if (!localPlayer) return;
-
-    if ((data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) || 
-        (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y)))) {
-      console.error("Invalid coordinates detected. Aborting database update.", data);
-      return;
-    }
-
-    const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
-    await update(playerRef, data);
-  }, 100), []);
   
-  const checkCollision = (x: number, y: number): boolean => {
-    const playerWidth = 16 * 0.5;
-    const playerHeight = 32 * 0.5; 
-
-    const bounds = {
-      left: x - playerWidth / 2,
-      right: x + playerWidth / 2,
-      bottom: y + playerHeight / 4,
-    };
-    
-    const corners = [
-        { x: bounds.left, y: bounds.bottom - playerHeight / 2 },
-        { x: bounds.right, y: bounds.bottom - playerHeight / 2 },
-        { x: bounds.left, y: bounds.bottom },
-        { x: bounds.right, y: bounds.bottom },
-    ];
-
-
-    for (const corner of corners) {
-        const tileX = Math.floor(corner.x / TILE_SIZE);
-        const tileY = Math.floor(corner.y / TILE_SIZE);
-
-        if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) {
-            return true;
-        }
-
-        const tileType = mapLayout[tileY]?.[tileX];
-        if (tileType === 1 || tileType === 3) {
-            return true;
-        }
-    }
-    return false;
-  };
-
   useEffect(() => {
     if (!pixiContainer.current) return;
     
-    const app = new Application();
+    let app: Application | null = new Application();
     appRef.current = app;
 
     const onKeyDown = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown.current[e.key.toLowerCase()] = false; };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    
+    const updatePlayerInDb = throttle(async (data: Partial<Player>) => {
+      const localPlayer = currentPlayerRef.current;
+      if (!localPlayer) return;
+
+      if ((data.x !== undefined && (typeof data.x !== 'number' || isNaN(data.x))) ||
+          (data.y !== undefined && (typeof data.y !== 'number' || isNaN(data.y)))) {
+        console.error("Invalid coordinates detected. Aborting database update.", data);
+        return;
+      }
+
+      const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
+      await update(playerRef, data);
+    }, 100);
+
+    const checkCollision = (x: number, y: number): boolean => {
+      const playerWidth = 16 * 0.5;
+      const playerHeight = 32 * 0.5; 
+  
+      const bounds = {
+        left: x - playerWidth / 2,
+        right: x + playerWidth / 2,
+        bottom: y + playerHeight / 4,
+      };
+      
+      const corners = [
+          { x: bounds.left, y: bounds.bottom - playerHeight / 2 },
+          { x: bounds.right, y: bounds.bottom - playerHeight / 2 },
+          { x: bounds.left, y: bounds.bottom },
+          { x: bounds.right, y: bounds.bottom },
+      ];
+  
+  
+      for (const corner of corners) {
+          const tileX = Math.floor(corner.x / TILE_SIZE);
+          const tileY = Math.floor(corner.y / TILE_SIZE);
+  
+          if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) {
+              return true;
+          }
+  
+          const tileType = mapLayout[tileY]?.[tileX];
+          if (tileType === 1 || tileType === 3) {
+              return true;
+          }
+      }
+      return false;
+    };
+
 
     const initPixi = async () => {
+      if (!app || !pixiContainer.current) return;
       await app.init({
         backgroundColor: 0x1099bb,
-        resizeTo: pixiContainer.current!,
+        resizeTo: pixiContainer.current,
         autoDensity: true,
         resolution: window.devicePixelRatio || 1,
       });
 
-      if (!pixiContainer.current) return;
+      if (!pixiContainer.current || !app) return;
       pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
 
       const world = new Container();
@@ -257,6 +258,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       lobbyContainer.addChild(enterButton);
       
       const resizeHandler = () => {
+        if (!app) return;
         const screenWidth = app.screen.width;
         const screenHeight = app.screen.height;
 
@@ -367,7 +369,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       await createNpc();
 
       app.ticker.add((ticker) => {
-        if (gameStateRef.current !== 'playing') return;
+        if (gameStateRef.current !== 'playing' || !app) return;
         
         const localPlayer = currentPlayerRef.current;
         if (!localPlayer) return;
@@ -389,31 +391,35 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         let moved = false;
         let newDirection: Player['direction'] = localPlayer.direction;
         
+        const newPos = { x: playerSprite.x, y: playerSprite.y };
+
         if (dx !== 0 || dy !== 0) {
-            moved = true;
-            if (dx !== 0 && dy !== 0) {
-              const magnitude = Math.sqrt(dx * dx + dy * dy);
-              dx = (dx / magnitude);
-              dy = (dy / magnitude);
-            }
-        
-            const nextX = playerSprite.x + dx * speed;
-            const nextY = playerSprite.y + dy * speed;
-        
-            if (!checkCollision(nextX, playerSprite.y)) {
-              playerSprite.x = nextX;
-            }
-            if (!checkCollision(playerSprite.x, nextY)) {
-              playerSprite.y = nextY;
-            }
-        
-            if (Math.abs(dy) > Math.abs(dx)) {
-              newDirection = dy < 0 ? 'back' : 'front';
-            } else if (dx !== 0) {
-              newDirection = dx < 0 ? 'left' : 'right';
-            }
-            updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+          moved = true;
+          if (dx !== 0 && dy !== 0) {
+            const magnitude = Math.sqrt(dx * dx + dy * dy);
+            dx = (dx / magnitude);
+            dy = (dy / magnitude);
           }
+      
+          const nextX = newPos.x + dx * speed;
+          if (!checkCollision(nextX, newPos.y)) {
+            newPos.x = nextX;
+          }
+          const nextY = newPos.y + dy * speed;
+          if (!checkCollision(newPos.x, nextY)) {
+            newPos.y = nextY;
+          }
+
+          playerSprite.x = newPos.x;
+          playerSprite.y = newPos.y;
+      
+          if (Math.abs(dy) > Math.abs(dx)) {
+            newDirection = dy < 0 ? 'back' : 'front';
+          } else if (dx !== 0) {
+            newDirection = dx < 0 ? 'left' : 'right';
+          }
+          updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+        }
 
         
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
@@ -465,8 +471,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      app.destroy(true, { children: true, texture: true, baseTexture: true });
-
+      if (app) {
+        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        app = null;
+      }
       appRef.current = null;
       worldRef.current = null;
       lobbyRef.current = null;
@@ -480,7 +488,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         clearTimeout(chatTimeoutRef.current);
       }
     };
-  }, [updatePlayerInDb]);
+  }, []);
 
   useEffect(() => {
     if (!isPixiInitialized) return;
@@ -600,7 +608,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     
     loadAssetsAndPlayers();
     
-  }, [onlinePlayers, currentPlayer, gameState, isPixiInitialized, updatePlayerInDb]);
+  }, [onlinePlayers, currentPlayer, gameState, isPixiInitialized]);
 
   return <div ref={pixiContainer} className="w-full h-full" />;
 };
