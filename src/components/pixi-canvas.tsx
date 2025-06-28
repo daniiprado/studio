@@ -45,12 +45,12 @@ const mapLayout = [
   [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1],
   [1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
+  [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+  [1, 4, 4, 4, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 4, 4, 1],
+  [1, 4, 4, 4, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 4, 4, 1],
+  [1, 4, 4, 4, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 4, 4, 1],
+  [1, 4, 4, 4, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 4, 4, 1],
+  [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
   [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
   [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
   [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
@@ -58,7 +58,7 @@ const mapLayout = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ];
 
-const TILE_COLORS = { 0: 0x60bb38, 1: 0x4a4a4a, 2: 0xD3D3D3, 3: 0x8B4513 };
+const TILE_COLORS = { 0: 0x60bb38, 1: 0x4a4a4a, 2: 0xD3D3D3, 3: 0x8B4513, 4: 0x66B2FF };
 
 const NPC = {
   uid: 'npc-quest-giver',
@@ -69,11 +69,13 @@ const NPC = {
   direction: 'front'
 } as const;
 
-const PROXIMITY_RANGE = 50;
+const PROXIMITY_RANGE = 75; // Increased range
+const NPC_PROXIMITY_RANGE = 50;
 
 const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
+  const playerInteractionIconsRef = useRef<Record<string, Container>>({});
   const propsRef = useRef(props);
   
   useLayoutEffect(() => {
@@ -92,6 +94,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+
+    const getTileTypeAt = (x: number, y: number): number => {
+        const tileX = Math.floor(x / TILE_SIZE);
+        const tileY = Math.floor(y / TILE_SIZE);
+        if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return -1;
+        return mapLayout[tileY]?.[tileX] ?? -1;
+    };
         
     const init = async () => {
       try {
@@ -115,6 +124,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         
         const playerSprites: Record<string, PlayerSprite> = {};
         const playerText: Record<string, Text> = {};
+        const playerInteractionIcons = playerInteractionIconsRef.current;
         const loadedSheets: Record<string, Spritesheet> = {};
         const loadingSheets: Record<string, boolean> = {};
         
@@ -230,10 +240,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 { x: bounds.left, y: bounds.bottom }, { x: bounds.right, y: bounds.bottom },
             ];
             for (const corner of corners) {
-                const tileX = Math.floor(corner.x / TILE_SIZE);
-                const tileY = Math.floor(corner.y / TILE_SIZE);
-                if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return true;
-                const tileType = mapLayout[tileY]?.[tileX];
+                const tileType = getTileTypeAt(corner.x, corner.y);
                 if (tileType === 1 || tileType === 3) return true;
             }
             return false;
@@ -246,8 +253,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 if(!activePlayerIds.has(uid)){
                     if (playerSprites[uid]) playerSprites[uid].destroy();
                     if (playerText[uid]) playerText[uid].destroy();
+                    if (playerInteractionIcons[uid]) playerInteractionIcons[uid].destroy();
                     delete playerSprites[uid];
                     delete playerText[uid];
+                    delete playerInteractionIcons[uid];
                 }
             }
             
@@ -331,7 +340,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         if (!pixiContainerRef.current) { app.destroy(true, true); return; }
         
         const npcProximityIndicator = createNpcProximityIndicator(world);
-        let proximityState = false;
+        let npcProximityState = false;
 
         tickerCallback = () => {
             if (app.destroyed) return;
@@ -398,13 +407,44 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 sprite.zIndex = sprite.y;
               }
             }
+
+            const isLocalInOffice = getTileTypeAt(playerSprite.x, playerSprite.y) === 4;
+            for(const otherPlayer of onlinePlayers) {
+                const otherSprite = playerSprites[otherPlayer.uid];
+                if (!otherSprite) continue;
+
+                const isOtherInOffice = getTileTypeAt(otherSprite.x, otherSprite.y) === 4;
+                const distance = Math.hypot(playerSprite.x - otherSprite.x, playerSprite.y - otherSprite.y);
+                const inProximity = distance < PROXIMITY_RANGE;
+                const canInteract = inProximity || (isLocalInOffice && isOtherInOffice);
+
+                let iconContainer = playerInteractionIcons[otherPlayer.uid];
+                if (!iconContainer) {
+                    iconContainer = new Container();
+                    const micIcon = createMicIcon();
+                    const cameraIcon = createCameraIcon();
+                    cameraIcon.x = 15;
+                    iconContainer.addChild(micIcon, cameraIcon);
+                    world.addChild(iconContainer);
+                    playerInteractionIcons[otherPlayer.uid] = iconContainer;
+                }
+                
+                const micIcon = iconContainer.getChildByName('mic');
+                const cameraIcon = iconContainer.getChildByName('camera');
+                if (micIcon) micIcon.visible = canInteract && !!otherPlayer.isMicOn;
+                if (cameraIcon) cameraIcon.visible = canInteract && !!otherPlayer.isCameraOn;
+                iconContainer.x = otherSprite.x - 7.5;
+                iconContainer.y = otherSprite.y - (otherSprite.height * otherSprite.scale.y) - 20;
+                iconContainer.zIndex = otherSprite.y + 1;
+            }
+
             world.sortChildren();
             
             if (npcSprite) {
                 const distance = Math.hypot(playerSprite.x - npcSprite.x, playerSprite.y - npcSprite.y);
-                const isNear = distance < PROXIMITY_RANGE;
-                if (isNear !== proximityState) {
-                    proximityState = isNear;
+                const isNear = distance < NPC_PROXIMITY_RANGE;
+                if (isNear !== npcProximityState) {
+                    npcProximityState = isNear;
                     onProximityChange(isNear);
                 }
                 npcProximityIndicator.visible = isNear;
@@ -501,6 +541,24 @@ function createNpcProximityIndicator(world: Container) {
     indicator.zIndex = 9999;
     world.addChild(indicator);
     return indicator;
+}
+
+function createMicIcon() {
+    const mic = new Graphics();
+    mic.roundRect(-4, -8, 8, 10, 4).fill(0xCCCCCC); // Mic head
+    mic.rect(-1.5, 2, 3, 5).fill(0x999999); // Mic stand
+    mic.name = 'mic';
+    mic.visible = false;
+    return mic;
+}
+
+function createCameraIcon() {
+    const camera = new Graphics();
+    camera.roundRect(-8, -5, 16, 10, 3).fill(0x999999); // Body
+    camera.circle(2, 0, 3).fill(0x44DDFF); // Lens
+    camera.name = 'camera';
+    camera.visible = false;
+    return camera;
 }
 
 export default PixiCanvas;

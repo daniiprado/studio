@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { equalTo, onValue, orderByChild, query, ref } from 'firebase/database';
+import { equalTo, onValue, orderByChild, query, ref, update } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import type { Player } from '@/lib/types';
 import dynamic from 'next/dynamic';
@@ -122,6 +122,13 @@ export default function GameClient() {
       }
     };
   }, [isCameraOpen, toast]);
+  
+  const updatePlayerState = useCallback((data: Partial<Player>) => {
+    if (!user) return;
+    const playerRef = ref(rtdb, `players/${user.uid}`);
+    update(playerRef, data);
+  }, [user]);
+
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,10 +211,12 @@ export default function GameClient() {
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
         setIsRecording(false);
+        updatePlayerState({ isMicOn: false });
       };
 
       recorder.start();
       setIsRecording(true);
+      updatePlayerState({ isMicOn: true });
 
     } catch (error) {
       console.error('Error accessing microphone:', error);
@@ -231,133 +240,135 @@ export default function GameClient() {
   
   return (
     <>
-      <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
-        <div className="flex-1 relative">
-            <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between p-4 bg-card/50 border-b border-border backdrop-blur-sm">
-                <h1 className="font-headline text-2xl text-primary font-bold tracking-wider">ServiAdventures</h1>
-                <div className="flex items-center gap-4">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setSidebarOpen(!isSidebarOpen)}
-                    className="text-foreground hover:text-accent hover:bg-white/10"
-                    >
-                    {isSidebarOpen ? <PanelRightClose /> : <PanelRightOpen />}
-                    <span className="sr-only">Toggle Sidebar</span>
-                    </Button>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                        <Avatar>
-                        <AvatarImage src={user.photoURL ?? undefined} alt={user.displayName ?? 'User'} />
-                        <AvatarFallback>{user.displayName?.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                    </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-56" align="end" forceMount>
-                    <DropdownMenuLabel className="font-normal">
-                        <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none">{user.displayName}</p>
-                        <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-                        </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setCharacterModalOpen(true)}>
-                        <PersonStanding className="mr-2 h-4 w-4" />
-                        <span>Change Character</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={signOut}>
-                        <LogOut className="mr-2 h-4 w-4" />
-                        <span>Log out</span>
-                    </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-                </div>
-            </header>
+      <div className="h-screen w-full bg-background text-foreground overflow-hidden relative">
+        <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between p-4 bg-card/50 border-b border-border backdrop-blur-sm">
+            <h1 className="font-headline text-2xl text-primary font-bold tracking-wider">ServiAdventures</h1>
+            <div className="flex items-center gap-4">
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(!isSidebarOpen)}
+                className="text-foreground hover:text-accent hover:bg-white/10"
+                >
+                {isSidebarOpen ? <PanelRightClose /> : <PanelRightOpen />}
+                <span className="sr-only">Toggle Sidebar</span>
+                </Button>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                    <Avatar>
+                    <AvatarImage src={user.photoURL ?? undefined} alt={user.displayName ?? 'User'} />
+                    <AvatarFallback>{user.displayName?.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user.displayName}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                    </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setCharacterModalOpen(true)}>
+                    <PersonStanding className="mr-2 h-4 w-4" />
+                    <span>Change Character</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+            </div>
+        </header>
 
-            <main className="absolute inset-0 z-10">
-                <PixiCanvas 
-                    currentPlayer={player} 
-                    onlinePlayers={onlinePlayers} 
-                    gameState={gameState}
-                    setGameState={setGameState}
-                    onProximityChange={setIsNearNpc}
-                />
-            </main>
-            
-            {isCameraOpen && (
-              <div className="absolute top-20 left-4 z-20 w-64 bg-black/50 p-2 rounded-lg border border-border">
-                <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
-                {hasCameraPermission === false && (
-                    <Alert variant="destructive" className="mt-2">
-                      <AlertTitle>Camera Access Required</AlertTitle>
-                      <AlertDescription>
-                        Please allow camera access to use this feature.
-                      </AlertDescription>
-                    </Alert>
-                )}
-              </div>
+        <main className="absolute inset-0 z-10">
+            <PixiCanvas 
+                currentPlayer={player} 
+                onlinePlayers={onlinePlayers} 
+                gameState={gameState}
+                setGameState={setGameState}
+                onProximityChange={setIsNearNpc}
+            />
+        </main>
+        
+        {isCameraOpen && (
+          <div className="absolute top-20 left-4 z-20 w-64 bg-black/50 p-2 rounded-lg border border-border">
+            <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
+            {hasCameraPermission === false && (
+                <Alert variant="destructive" className="mt-2">
+                  <AlertTitle>Camera Access Required</AlertTitle>
+                  <AlertDescription>
+                    Please allow camera access to use this feature.
+                  </AlertDescription>
+                </Alert>
             )}
+          </div>
+        )}
 
-            <footer className="absolute bottom-0 left-1/2 -translate-x-1/2 z-50 p-4">
-                <div className="flex items-center gap-2 rounded-full bg-card/50 px-4 py-2 border border-border backdrop-blur-sm">
-                    <Popover open={isChatOpen} onOpenChange={(open) => {
-                        setIsChatOpen(open);
-                        if (!open) setNpcResponse(null);
-                    }}>
-                        <PopoverTrigger asChild>
-                            <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={() => setIsChatOpen(true)}>
-                                <MessageSquare/>
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-80 mb-2">
-                            <form onSubmit={handleSendMessage} className="grid gap-4">
-                                <div className="space-y-2">
-                                    <h4 className="font-medium leading-none">Chat with Quest Giver</h4>
-                                    <p className="text-sm text-muted-foreground">
-                                        Type your message below.
-                                    </p>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Input 
-                                        placeholder="Hello there!" 
-                                        value={chatInput} 
-                                        onChange={(e) => setChatInput(e.target.value)} 
-                                        disabled={isSubmitting}
-                                    />
-                                    <Button type="submit" disabled={isSubmitting || !chatInput.trim()}>
-                                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                        Send
-                                    </Button>
-                                </div>
-                            </form>
-                            {isSubmitting && !npcResponse && (
-                                <div className="mt-4 text-sm p-3 flex items-center justify-center">
-                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                                <p className="ml-2 text-muted-foreground">Thinking...</p>
-                                </div>
-                            )}
-                            {npcResponse && (
-                                <div className="mt-4 text-sm p-3 bg-muted rounded-md border">
-                                    <p className="font-semibold text-accent">Quest Giver:</p>
-                                    <p className="text-foreground/90 whitespace-pre-wrap">{npcResponse}</p>
-                                </div>
-                            )}
-                        </PopoverContent>
-                    </Popover>
-                    <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing' || isSubmitting} onClick={handleVoiceChatClick}>
-                        {isRecording ? <MicOff className="text-destructive"/> : (isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic/>)}
-                    </Button>
-                    <Button size="icon" variant={isCameraOpen ? "secondary" : "ghost"} className="rounded-full hover:bg-accent/20" disabled={gameState !== 'playing'} onClick={() => setIsCameraOpen(prev => !prev)}>
-                        <Video/>
-                    </Button>
-                </div>
-            </footer>
-        </div>
+        <footer className="absolute bottom-0 left-1/2 -translate-x-1/2 z-50 p-4">
+            <div className="flex items-center gap-2 rounded-full bg-card/50 px-4 py-2 border border-border backdrop-blur-sm">
+                <Popover open={isChatOpen} onOpenChange={(open) => {
+                    setIsChatOpen(open);
+                    if (!open) setNpcResponse(null);
+                }}>
+                    <PopoverTrigger asChild>
+                        <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={() => setIsChatOpen(true)}>
+                            <MessageSquare/>
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 mb-2">
+                        <form onSubmit={handleSendMessage} className="grid gap-4">
+                            <div className="space-y-2">
+                                <h4 className="font-medium leading-none">Chat with Quest Giver</h4>
+                                <p className="text-sm text-muted-foreground">
+                                    Type your message below.
+                                </p>
+                            </div>
+                            <div className="grid gap-2">
+                                <Input 
+                                    placeholder="Hello there!" 
+                                    value={chatInput} 
+                                    onChange={(e) => setChatInput(e.target.value)} 
+                                    disabled={isSubmitting}
+                                />
+                                <Button type="submit" disabled={isSubmitting || !chatInput.trim()}>
+                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                    Send
+                                </Button>
+                            </div>
+                        </form>
+                        {isSubmitting && !npcResponse && (
+                            <div className="mt-4 text-sm p-3 flex items-center justify-center">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                            <p className="ml-2 text-muted-foreground">Thinking...</p>
+                            </div>
+                        )}
+                        {npcResponse && (
+                            <div className="mt-4 text-sm p-3 bg-muted rounded-md border">
+                                <p className="font-semibold text-accent">Quest Giver:</p>
+                                <p className="text-foreground/90 whitespace-pre-wrap">{npcResponse}</p>
+                            </div>
+                        )}
+                    </PopoverContent>
+                </Popover>
+                <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing' || isSubmitting} onClick={handleVoiceChatClick}>
+                    {isRecording ? <MicOff className="text-destructive"/> : (isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic/>)}
+                </Button>
+                <Button size="icon" variant={isCameraOpen ? "secondary" : "ghost"} className="rounded-full hover:bg-accent/20" disabled={gameState !== 'playing'} onClick={() => {
+                  const newCameraState = !isCameraOpen;
+                  setIsCameraOpen(newCameraState);
+                  updatePlayerState({ isCameraOn: newCameraState });
+                }}>
+                    <Video/>
+                </Button>
+            </div>
+        </footer>
         
         {isSidebarOpen && (
-          <aside className="w-[350px] flex-shrink-0 border-l border-border bg-black/20">
+          <aside className="absolute right-0 top-0 bottom-0 w-[350px] flex-shrink-0 border-l border-border bg-black/20 z-20">
             <RightSidebar />
           </aside>
         )}

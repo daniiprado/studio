@@ -10,6 +10,8 @@ export interface Player {
   x: number;
   y: number;
   direction: 'front' | 'back' | 'left' | 'right';
+  isMicOn?: boolean;
+  isCameraOn?: boolean;
 }
 
 export type GoogleApiStatus = 'loading' | 'error' | 'ready';
