@@ -49,7 +49,6 @@ export default function GameClient() {
   // Chat state
   const [chatInput, setChatInput] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [npcMessage, setNpcMessage] = useState<string | null>(null);
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -57,7 +56,6 @@ export default function GameClient() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const audioPlayerRef = useRef<HTMLAudioElement>(null);
 
 
   useEffect(() => {
@@ -89,16 +87,23 @@ export default function GameClient() {
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
-    setNpcMessage(chatInput);
+    
+    // Reverted: This feature was causing instability.
+    console.log("Message sent:", chatInput);
+    toast({
+        title: 'Feature Disabled',
+        description: 'The NPC chat feature is temporarily disabled.',
+        variant: 'destructive',
+    });
+
     setChatInput('');
     setIsChatOpen(false);
-    
-    setTimeout(() => setNpcMessage(null), 5000); // Hide message after 5 seconds
   };
 
   const handleVoiceChatClick = async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
+      setIsRecording(false);
       return;
     }
 
@@ -125,15 +130,12 @@ export default function GameClient() {
       };
 
       recorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        if (audioPlayerRef.current) {
-          audioPlayerRef.current.src = audioUrl;
-          audioPlayerRef.current.play();
-        }
-        setNpcMessage("Listen to your beautiful voice!");
-        setTimeout(() => setNpcMessage(null), 5000);
-
+        // Reverted: This feature was causing instability.
+        toast({
+            title: 'Feature Disabled',
+            description: 'The NPC voice chat feature is temporarily disabled.',
+            variant: 'destructive',
+        });
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
         setIsRecording(false);
@@ -216,7 +218,6 @@ export default function GameClient() {
                     gameState={gameState}
                     setGameState={setGameState}
                     onProximityChange={setIsNearNpc}
-                    npcMessage={npcMessage}
                 />
 
                 <footer className="absolute bottom-0 left-1/2 -translate-x-1/2 z-10 p-4">
@@ -267,7 +268,6 @@ export default function GameClient() {
           currentPlayer={player}
         />
       )}
-      <audio ref={audioPlayerRef} className="hidden" />
     </>
   );
 }
