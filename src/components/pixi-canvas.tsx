@@ -73,17 +73,22 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
-
+  
+  // Create a ref to hold the latest props. This is the key to solving the stale state issue in the ticker.
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
   useLayoutEffect(() => {
+    // Update the ref with the latest props on every render.
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
   });
 
   useEffect(() => {
+    // This effect runs ONLY ONCE on mount and cleans up ONLY ONCE on unmount.
     if (!pixiContainer.current) {
-        return;
+      return;
     }
+
+    let app: Application | null = null;
+    let isMounted = true;
 
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
@@ -93,23 +98,19 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     window.addEventListener('keyup', onKeyUp);
     
     const initPixi = async () => {
-        if (!pixiContainer.current || appRef.current) {
-             return;
-        }
+        app = new Application();
         
-        const app = new Application();
-        appRef.current = app;
-
         await app.init({
             backgroundColor: 0x1099bb,
-            resizeTo: pixiContainer.current,
+            resizeTo: pixiContainer.current!,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
 
-        if (!pixiContainer.current) {
-            app.destroy(true);
-            appRef.current = null;
+        // Check if component unmounted while we were initializing
+        if (!isMounted || !pixiContainer.current) {
+            app.destroy(true, { children: true, texture: true, baseTexture: true });
+            app = null;
             return;
         }
         
@@ -160,32 +161,31 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         enterButton.eventMode = 'static';
         enterButton.cursor = 'pointer';
         enterButton.on('pointertap', () => {
+          // Use the function from the ref to ensure we're calling the latest version
           propsRef.current.setGameState('playing');
         });
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (!appRef.current) return;
-            const screenWidth = appRef.current.screen.width;
-            const screenHeight = appRef.current.screen.height;
-
-            const { gameState } = propsRef.current;
-            const isPlaying = gameState === 'playing';
-
-            world.visible = isPlaying;
-            lobby.visible = !isPlaying;
+            if (!app) return;
+            const screenWidth = app.screen.width;
+            const screenHeight = app.screen.height;
+            const { gameState: currentGameState } = propsRef.current;
             
-            if (isPlaying) {
+            world.visible = currentGameState === 'playing';
+            lobby.visible = currentGameState === 'lobby';
+            
+            if (currentGameState === 'playing') {
                 const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
                 const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
                 const scaleX = screenWidth / worldWidth;
                 const scaleY = screenHeight / worldHeight;
-                const scale = Math.min(scaleX, scaleY);
+                const scale = Math.max(1, Math.min(scaleX, scaleY)); // Ensure it scales down but doesn't get too small
                 world.scale.set(scale);
                 world.x = (screenWidth - (worldWidth * scale)) / 2;
                 world.y = (screenHeight - (worldHeight * scale)) / 2;
             } else {
-                if (background.texture.valid) {
+                 if (background.texture.valid) {
                     const bgRatio = background.texture.width / background.texture.height;
                     const screenRatio = screenWidth / screenHeight;
                     
@@ -213,10 +213,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       const loadedSheets: Record<string, Spritesheet> = {};
       
       const updatePlayerInDb = throttle((data: Partial<Player>) => {
-        const { currentPlayer } = propsRef.current;
-        if (!currentPlayer) return;
+        // Always read the latest player from the ref
+        const { currentPlayer: localPlayer } = propsRef.current;
+        if (!localPlayer) return;
 
-        const playerRef = ref(rtdb, `players/${currentPlayer.uid}`);
+        const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
         update(playerRef, data);
       }, 100);
 
@@ -250,21 +251,20 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       let proximityState = false;
 
       app.ticker.add(() => {
-        if (!appRef.current) return;
-        const { gameState, currentPlayer, onlinePlayers, onProximityChange } = propsRef.current;
+        if (!app || !isMounted) return;
+        const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
 
-        const isPlaying = gameState === 'playing';
-        world.visible = isPlaying;
-        lobby.visible = !isPlaying;
+        world.visible = currentGameState === 'playing';
+        lobby.visible = currentGameState === 'lobby';
         
-        if (!isPlaying) {
-             resizeHandler();
+        if (currentGameState !== 'playing') {
+             resizeHandler(); // Keep lobby resized
              return;
         }
         
-        if (!currentPlayer) return;
-        const localPlayer = currentPlayer;
+        if (!localPlayer) return;
         const playerSprite = playerSprites[localPlayer.uid];
+        
         if (playerSprite && playerSprite.parent) {
             const speed = 2.5;
             let dx = 0;
@@ -278,10 +278,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             let newDirection: Player['direction'] = localPlayer.direction;
             let moved = false;
             
-            let targetX = playerSprite.x + dx * speed;
-            let targetY = playerSprite.y + dy * speed;
-
-            // Check X and Y axis separately for wall sliding
             let movedX = false;
             let movedY = false;
 
@@ -321,15 +317,15 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             }
         }
         
-        updatePlayerSprites(world, [currentPlayer, ...onlinePlayers], playerSprites, playerText, loadedSheets, currentPlayer.uid);
+        updatePlayerSprites(world, [localPlayer, ...currentOnlinePlayers], playerSprites, playerText, loadedSheets, localPlayer.uid);
         
-        const pSprite = playerSprites[currentPlayer.uid];
+        const pSprite = playerSprites[localPlayer.uid];
         if (pSprite && npcSprite) {
             const distance = Math.hypot(pSprite.x - npcSprite.x, pSprite.y - npcSprite.y);
             const isNear = distance < PROXIMITY_RANGE;
             if (isNear !== proximityState) {
                 proximityState = isNear;
-                onProximityChange(isNear);
+                currentOnProximityChange(isNear);
             }
             npcProximityIndicator.visible = isNear;
             if (isNear) {
@@ -345,12 +341,13 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     initPixi();
 
     return () => {
+      isMounted = false;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      if (appRef.current) {
-        appRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
-        appRef.current = null;
+      if (app) {
+        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        app = null;
       }
     };
   }, []);
