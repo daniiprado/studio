@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
@@ -63,8 +63,8 @@ const TILE_COLORS = { 0: 0x228B22, 1: 0x4a4a4a, 2: 0xD3D3D3, 3: 0x8B4513 };
 const NPC = {
   uid: 'npc-quest-giver',
   characterId: 'ana',
-  x: 200,
-  y: 120,
+  x: 312,
+  y: 200,
   name: 'Quest Giver',
   direction: 'front'
 } as const;
@@ -77,7 +77,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
 
   // Use refs for props to ensure the main useEffect doesn't re-run
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
-  useLayoutEffect(() => {
+  useEffect(() => {
     propsRef.current = { currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange };
   }, [currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange]);
 
@@ -162,7 +162,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             background.position.set(screenWidth / 2, screenHeight / 2);
             enterButton.position.set(
                 screenWidth / 2 - enterButton.width / 2,
-                screenHeight / 2 - enterButton.height / 2 + 50 // Adjust position below top bar
+                screenHeight / 2 - enterButton.height / 2
             );
 
             const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
@@ -235,8 +235,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                     const bounds = {
                         left: x - playerWidth / 2,
                         right: x + playerWidth / 2,
-                        top: y - playerHeight, // Top of the head
-                        bottom: y, // Feet of the character
+                        top: y - playerHeight,
+                        bottom: y,
                     };
                     const corners = [
                         { x: bounds.left, y: bounds.top },
@@ -254,12 +254,14 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                     return false;
                 };
 
-                // Move on each axis separately to allow sliding
-                if (dx !== 0 && !checkCollision(playerSprite.x + dx * speed, playerSprite.y)) {
-                    playerSprite.x += dx * speed;
+                let targetX = playerSprite.x + dx * speed;
+                let targetY = playerSprite.y + dy * speed;
+
+                if (!checkCollision(targetX, playerSprite.y)) {
+                    playerSprite.x = targetX;
                 }
-                if (dy !== 0 && !checkCollision(playerSprite.x, playerSprite.y + dy * speed)) {
-                    playerSprite.y += dy * speed;
+                if (!checkCollision(playerSprite.x, targetY)) {
+                    playerSprite.y = targetY;
                 }
                 
                 updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
