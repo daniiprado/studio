@@ -80,12 +80,13 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   });
 
   useEffect(() => {
-    if (!pixiContainer.current) {
+    const pixiElement = pixiContainer.current;
+    if (!pixiElement) {
         return;
     }
 
     let app: Application | null = new Application();
-    let tickerCallback = (time: any) => {};
+    let tickerCallback: (() => void) | null = null;
 
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
@@ -95,16 +96,16 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     window.addEventListener('keyup', onKeyUp);
     
     const initPixi = async () => {
-        if (!app || !pixiContainer.current) return;
+        if (!app || !pixiElement) return;
         
         await app.init({
             backgroundColor: 0x1099bb,
-            resizeTo: pixiContainer.current,
+            resizeTo: pixiElement,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
         
-        pixiContainer.current.appendChild(app.canvas);
+        pixiElement.appendChild(app.canvas);
         
         const playerSprites: Record<string, PlayerSprite> = {};
         const playerText: Record<string, Text> = {};
@@ -330,7 +331,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       window.removeEventListener('keyup', onKeyUp);
       
       if (app) {
-        if(app.ticker) {
+        if(tickerCallback && app.ticker) {
             app.ticker.remove(tickerCallback);
         }
         if (!app.destroyed) {
