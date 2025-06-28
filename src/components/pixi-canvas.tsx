@@ -444,7 +444,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     };
   }, []); 
 
-  return <div ref={pixiContainerRef} className="absolute inset-0 z-10" />;
+  return <div ref={pixiContainerRef} className="absolute inset-0" />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {

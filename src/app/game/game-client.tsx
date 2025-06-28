@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
@@ -233,8 +232,8 @@ export default function GameClient() {
   return (
     <>
       <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
-        <div className="flex-1 flex flex-col relative">
-            <header className="z-10 flex items-center justify-between p-4 bg-card/50 border-b border-border">
+        <div className="flex-1 relative">
+            <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between p-4 bg-card/50 border-b border-border backdrop-blur-sm">
                 <h1 className="font-headline text-2xl text-primary font-bold tracking-wider">ServiAdventures</h1>
                 <div className="flex items-center gap-4">
                 <Button
@@ -277,7 +276,7 @@ export default function GameClient() {
                 </div>
             </header>
 
-            <main className="flex-1">
+            <main className="absolute inset-0 z-10">
                 <PixiCanvas 
                     currentPlayer={player} 
                     onlinePlayers={onlinePlayers} 
