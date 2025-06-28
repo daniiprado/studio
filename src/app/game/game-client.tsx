@@ -233,7 +233,7 @@ export default function GameClient() {
   return (
     <>
       <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col relative">
             <header className="z-10 flex items-center justify-between p-4 bg-card/50 border-b border-border">
                 <h1 className="font-headline text-2xl text-primary font-bold tracking-wider">ServiAdventures</h1>
                 <div className="flex items-center gap-4">
@@ -277,7 +277,7 @@ export default function GameClient() {
                 </div>
             </header>
 
-            <main className="flex-1 relative">
+            <main className="flex-1">
                 <PixiCanvas 
                     currentPlayer={player} 
                     onlinePlayers={onlinePlayers} 
@@ -285,76 +285,76 @@ export default function GameClient() {
                     setGameState={setGameState}
                     onProximityChange={setIsNearNpc}
                 />
-                
-                {isCameraOpen && (
-                  <div className="absolute top-4 left-4 z-20 w-64 bg-black/50 p-2 rounded-lg border border-border">
-                    <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
-                    {hasCameraPermission === false && (
-                        <Alert variant="destructive" className="mt-2">
-                          <AlertTitle>Camera Access Required</AlertTitle>
-                          <AlertDescription>
-                            Please allow camera access to use this feature.
-                          </AlertDescription>
-                        </Alert>
-                    )}
-                  </div>
-                )}
-
-                <footer className="absolute bottom-0 left-1/2 -translate-x-1/2 z-50 p-4">
-                    <div className="flex items-center gap-2 rounded-full bg-card/50 px-4 py-2 border border-border backdrop-blur-sm">
-                        <Popover open={isChatOpen} onOpenChange={(open) => {
-                            setIsChatOpen(open);
-                            if (!open) setNpcResponse(null);
-                        }}>
-                            <PopoverTrigger asChild>
-                                <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={() => setIsChatOpen(true)}>
-                                    <MessageSquare/>
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-80 mb-2">
-                                <form onSubmit={handleSendMessage} className="grid gap-4">
-                                    <div className="space-y-2">
-                                        <h4 className="font-medium leading-none">Chat with Quest Giver</h4>
-                                        <p className="text-sm text-muted-foreground">
-                                            Type your message below.
-                                        </p>
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Input 
-                                            placeholder="Hello there!" 
-                                            value={chatInput} 
-                                            onChange={(e) => setChatInput(e.target.value)} 
-                                            disabled={isSubmitting}
-                                        />
-                                        <Button type="submit" disabled={isSubmitting || !chatInput.trim()}>
-                                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                            Send
-                                        </Button>
-                                    </div>
-                                </form>
-                                {isSubmitting && !npcResponse && (
-                                    <div className="mt-4 text-sm p-3 flex items-center justify-center">
-                                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                                    <p className="ml-2 text-muted-foreground">Thinking...</p>
-                                    </div>
-                                )}
-                                {npcResponse && (
-                                    <div className="mt-4 text-sm p-3 bg-muted rounded-md border">
-                                        <p className="font-semibold text-accent">Quest Giver:</p>
-                                        <p className="text-foreground/90 whitespace-pre-wrap">{npcResponse}</p>
-                                    </div>
-                                )}
-                            </PopoverContent>
-                        </Popover>
-                        <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing' || isSubmitting} onClick={handleVoiceChatClick}>
-                            {isRecording ? <MicOff className="text-destructive"/> : (isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic/>)}
-                        </Button>
-                        <Button size="icon" variant={isCameraOpen ? "secondary" : "ghost"} className="rounded-full hover:bg-accent/20" disabled={gameState !== 'playing'} onClick={() => setIsCameraOpen(prev => !prev)}>
-                            <Video/>
-                        </Button>
-                    </div>
-                </footer>
             </main>
+            
+            {isCameraOpen && (
+              <div className="absolute top-20 left-4 z-20 w-64 bg-black/50 p-2 rounded-lg border border-border">
+                <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
+                {hasCameraPermission === false && (
+                    <Alert variant="destructive" className="mt-2">
+                      <AlertTitle>Camera Access Required</AlertTitle>
+                      <AlertDescription>
+                        Please allow camera access to use this feature.
+                      </AlertDescription>
+                    </Alert>
+                )}
+              </div>
+            )}
+
+            <footer className="absolute bottom-0 left-1/2 -translate-x-1/2 z-50 p-4">
+                <div className="flex items-center gap-2 rounded-full bg-card/50 px-4 py-2 border border-border backdrop-blur-sm">
+                    <Popover open={isChatOpen} onOpenChange={(open) => {
+                        setIsChatOpen(open);
+                        if (!open) setNpcResponse(null);
+                    }}>
+                        <PopoverTrigger asChild>
+                            <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing'} onClick={() => setIsChatOpen(true)}>
+                                <MessageSquare/>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 mb-2">
+                            <form onSubmit={handleSendMessage} className="grid gap-4">
+                                <div className="space-y-2">
+                                    <h4 className="font-medium leading-none">Chat with Quest Giver</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                        Type your message below.
+                                    </p>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Input 
+                                        placeholder="Hello there!" 
+                                        value={chatInput} 
+                                        onChange={(e) => setChatInput(e.target.value)} 
+                                        disabled={isSubmitting}
+                                    />
+                                    <Button type="submit" disabled={isSubmitting || !chatInput.trim()}>
+                                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                        Send
+                                    </Button>
+                                </div>
+                            </form>
+                            {isSubmitting && !npcResponse && (
+                                <div className="mt-4 text-sm p-3 flex items-center justify-center">
+                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                                <p className="ml-2 text-muted-foreground">Thinking...</p>
+                                </div>
+                            )}
+                            {npcResponse && (
+                                <div className="mt-4 text-sm p-3 bg-muted rounded-md border">
+                                    <p className="font-semibold text-accent">Quest Giver:</p>
+                                    <p className="text-foreground/90 whitespace-pre-wrap">{npcResponse}</p>
+                                </div>
+                            )}
+                        </PopoverContent>
+                    </Popover>
+                    <Button size="icon" variant="ghost" className="rounded-full hover:bg-accent/20" disabled={!isNearNpc || gameState !== 'playing' || isSubmitting} onClick={handleVoiceChatClick}>
+                        {isRecording ? <MicOff className="text-destructive"/> : (isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic/>)}
+                    </Button>
+                    <Button size="icon" variant={isCameraOpen ? "secondary" : "ghost"} className="rounded-full hover:bg-accent/20" disabled={gameState !== 'playing'} onClick={() => setIsCameraOpen(prev => !prev)}>
+                        <Video/>
+                    </Button>
+                </div>
+            </footer>
         </div>
         
         {isSidebarOpen && (
