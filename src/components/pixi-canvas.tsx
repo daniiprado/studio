@@ -81,12 +81,21 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   });
 
   useEffect(() => {
-    const initPixi = async () => {
-        if (!pixiContainer.current || appRef.current) {
-            return;
-        }
+    let app: Application | null = null;
+    const playerSprites: Record<string, PlayerSprite> = {};
+    const playerText: Record<string, Text> = {};
+    const loadedSheets: Record<string, Spritesheet> = {};
+    const keysDown: Record<string, boolean> = {};
 
-        const app = new Application();
+    const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
+    const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+    
+    let tickerCallback = () => {};
+
+    const initPixi = async () => {
+        if (!pixiContainer.current) return;
+        
+        app = new Application();
         appRef.current = app;
         
         await app.init({
@@ -189,156 +198,137 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         app.renderer.on('resize', resizeHandler);
         resizeHandler();
       
-      const playerSprites: Record<string, PlayerSprite> = {};
-      const playerText: Record<string, Text> = {};
-      const loadedSheets: Record<string, Spritesheet> = {};
-      
-      const updatePlayerInDb = throttle((data: Partial<Player>) => {
-        const { currentPlayer: localPlayer } = propsRef.current;
-        if (!localPlayer) return;
+        const updatePlayerInDb = throttle((data: Partial<Player>) => {
+            const { currentPlayer: localPlayer } = propsRef.current;
+            if (!localPlayer) return;
+            const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
+            update(playerRef, data);
+        }, 100);
 
-        const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
-        update(playerRef, data);
-      }, 100);
-
-      const checkCollision = (x: number, y: number): boolean => {
-        const playerWidth = 16 * 0.5;
-        const playerHeight = 16 * 0.5;
-        const bounds = {
-            left: x - playerWidth / 2,
-            right: x + playerWidth / 2,
-            top: y - playerHeight,
-            bottom: y,
+        const checkCollision = (x: number, y: number): boolean => {
+            const playerWidth = 16 * 0.5;
+            const playerHeight = 16 * 0.5;
+            const bounds = {
+                left: x - playerWidth / 2,
+                right: x + playerWidth / 2,
+                top: y - playerHeight,
+                bottom: y,
+            };
+            const corners = [
+                { x: bounds.left, y: bounds.top },
+                { x: bounds.right, y: bounds.top },
+                { x: bounds.left, y: bounds.bottom },
+                { x: bounds.right, y: bounds.bottom },
+            ];
+            for (const corner of corners) {
+                const tileX = Math.floor(corner.x / TILE_SIZE);
+                const tileY = Math.floor(corner.y / TILE_SIZE);
+                if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return true;
+                const tileType = mapLayout[tileY]?.[tileX];
+                if (tileType === 1 || tileType === 3) return true;
+            }
+            return false;
         };
-        const corners = [
-            { x: bounds.left, y: bounds.top },
-            { x: bounds.right, y: bounds.top },
-            { x: bounds.left, y: bounds.bottom },
-            { x: bounds.right, y: bounds.bottom },
-        ];
-        for (const corner of corners) {
-            const tileX = Math.floor(corner.x / TILE_SIZE);
-            const tileY = Math.floor(corner.y / TILE_SIZE);
-            if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return true;
-            const tileType = mapLayout[tileY]?.[tileX];
-            if (tileType === 1 || tileType === 3) return true;
-        }
-        return false;
-      };
 
-      const keysDown: Record<string, boolean> = {};
-      const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
-      const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-      
-      window.addEventListener('keydown', onKeyDown);
-      window.addEventListener('keyup', onKeyUp);
+        const npcSprite = await createNpcSprite(world, loadedSheets);
+        const npcProximityIndicator = createNpcProximityIndicator(world);
+        let proximityState = false;
 
-      const npcSprite = await createNpcSprite(world, loadedSheets);
-      const npcProximityIndicator = createNpcProximityIndicator(world);
-      let proximityState = false;
+        tickerCallback = () => {
+            if (!appRef.current) return;
+            const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
 
-      const tickerCallback = () => {
-        if (!appRef.current) return;
-        const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
-
-        world.visible = currentGameState === 'playing';
-        lobby.visible = currentGameState === 'lobby';
-        
-        if (currentGameState !== 'playing') {
-             resizeHandler();
-             return;
-        }
-        
-        if (!localPlayer) return;
-        const playerSprite = playerSprites[localPlayer.uid];
-        
-        if (playerSprite && playerSprite.parent) {
-            const speed = 2.5;
-            let dx = 0;
-            let dy = 0;
-
-            if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
-            if (keysDown['s'] || keysDown['arrowdown']) dy += 1;
-            if (keysDown['a'] || keysDown['arrowleft']) dx -= 1;
-            if (keysDown['d'] || keysDown['arrowright']) dx += 1;
+            world.visible = currentGameState === 'playing';
+            lobby.visible = currentGameState === 'lobby';
             
-            let newDirection: Player['direction'] = localPlayer.direction;
-            let moved = false;
-            
-            let movedX = false;
-            let movedY = false;
-
-            if (dx !== 0 && !checkCollision(playerSprite.x + dx * speed, playerSprite.y)) {
-              playerSprite.x += dx * speed;
-              movedX = true;
-            }
-
-            if (dy !== 0 && !checkCollision(playerSprite.x, playerSprite.y + dy * speed)) {
-              playerSprite.y += dy * speed;
-              movedY = true;
+            if (currentGameState !== 'playing') {
+                resizeHandler();
+                return;
             }
             
-            moved = movedX || movedY;
+            if (!localPlayer) return;
+            const playerSprite = playerSprites[localPlayer.uid];
+            
+            if (playerSprite && playerSprite.parent) {
+                const speed = 2.5;
+                let dx = 0;
+                let dy = 0;
 
-            if (moved) {
-                if (movedY) {
-                    newDirection = dy < 0 ? 'back' : 'front';
-                } else if (movedX) {
-                    newDirection = dx < 0 ? 'left' : 'right';
-                }
-
-                updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
-
-                const sheet = loadedSheets[localPlayer.characterId];
-                if(sheet){
-                    const newAnimationName = `${newDirection}_walk`;
-                    if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
-                        playerSprite.textures = sheet.animations[newAnimationName];
-                        playerSprite.currentAnimationName = newAnimationName;
-                        playerSprite.animationSpeed = 0.15;
+                if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
+                if (keysDown['s'] || keysDown['arrowdown']) dy += 1;
+                if (keysDown['a'] || keysDown['arrowleft']) dx -= 1;
+                if (keysDown['d'] || keysDown['arrowright']) dx += 1;
+                
+                let newDirection: Player['direction'] = localPlayer.direction;
+                let moved = false;
+                
+                if (dx !== 0) {
+                    const newX = playerSprite.x + dx * speed;
+                    if (!checkCollision(newX, playerSprite.y)) {
+                        playerSprite.x = newX;
+                        moved = true;
+                        newDirection = dx < 0 ? 'left' : 'right';
                     }
-                    if (!playerSprite.playing) playerSprite.play();
                 }
-            } else {
-              if (playerSprite.playing) playerSprite.gotoAndStop(0);
-            }
-        }
-        
-        updatePlayerSprites(world, [localPlayer, ...currentOnlinePlayers], playerSprites, playerText, loadedSheets, localPlayer.uid);
-        
-        const pSprite = playerSprites[localPlayer.uid];
-        if (pSprite && npcSprite) {
-            const distance = Math.hypot(pSprite.x - npcSprite.x, pSprite.y - npcSprite.y);
-            const isNear = distance < PROXIMITY_RANGE;
-            if (isNear !== proximityState) {
-                proximityState = isNear;
-                currentOnProximityChange(isNear);
-            }
-            npcProximityIndicator.visible = isNear;
-            if (isNear) {
-                npcProximityIndicator.x = npcSprite.x;
-                npcProximityIndicator.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - 10;
-                const pulse = Math.sin(app.ticker.lastTime / 200) * 0.1 + 0.9;
-                npcProximityIndicator.scale.set(pulse);
-            }
-        }
-      };
+                if (dy !== 0) {
+                    const newY = playerSprite.y + dy * speed;
+                    if (!checkCollision(playerSprite.x, newY)) {
+                        playerSprite.y = newY;
+                        moved = true;
+                        newDirection = dy < 0 ? 'back' : 'front';
+                    }
+                }
 
-      app.ticker.add(tickerCallback);
+                if (moved) {
+                    updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
 
-      return () => {
-        window.removeEventListener('keydown', onKeyDown);
-        window.removeEventListener('keyup', onKeyUp);
-        app.ticker.remove(tickerCallback);
-      }
+                    const sheet = loadedSheets[localPlayer.characterId];
+                    if(sheet){
+                        const newAnimationName = `${newDirection}_walk`;
+                        if (playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
+                            playerSprite.textures = sheet.animations[newAnimationName];
+                            playerSprite.currentAnimationName = newAnimationName;
+                            playerSprite.animationSpeed = 0.15;
+                        }
+                        if (!playerSprite.playing) playerSprite.play();
+                    }
+                } else {
+                    if (playerSprite.playing) playerSprite.gotoAndStop(0);
+                }
+            }
+            
+            updatePlayerSprites(world, [localPlayer, ...currentOnlinePlayers], playerSprites, playerText, loadedSheets, localPlayer.uid);
+            
+            const pSprite = playerSprites[localPlayer.uid];
+            if (pSprite && npcSprite) {
+                const distance = Math.hypot(pSprite.x - npcSprite.x, pSprite.y - npcSprite.y);
+                const isNear = distance < PROXIMITY_RANGE;
+                if (isNear !== proximityState) {
+                    proximityState = isNear;
+                    currentOnProximityChange(isNear);
+                }
+                npcProximityIndicator.visible = isNear;
+                if (isNear) {
+                    npcProximityIndicator.x = npcSprite.x;
+                    npcProximityIndicator.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - 10;
+                    const pulse = Math.sin(app.ticker.lastTime / 200) * 0.1 + 0.9;
+                    npcProximityIndicator.scale.set(pulse);
+                }
+            }
+        };
+
+        app.ticker.add(tickerCallback);
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
     };
 
-    initPixi().then(cleanup => {
-        return cleanup;
-    });
+    initPixi();
 
     return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       if (appRef.current) {
+        if(tickerCallback) appRef.current.ticker.remove(tickerCallback);
         appRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         appRef.current = null;
       }
