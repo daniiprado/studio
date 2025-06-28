@@ -112,8 +112,8 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   }, 100), []);
   
   const checkCollision = (x: number, y: number): boolean => {
-    const playerWidth = 16 * 0.5; // Sprite width * scale
-    const playerHeight = 32 * 0.5; // Sprite height * scale
+    const playerWidth = 16 * 0.5; 
+    const playerHeight = 32 * 0.5; 
 
     const bounds = {
       left: x - playerWidth / 2,
@@ -122,10 +122,10 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     };
 
     const corners = [
-      { x: bounds.left, y: bounds.bottom - playerHeight / 2 }, // Top-left
-      { x: bounds.right, y: bounds.bottom - playerHeight / 2 }, // Top-right
-      { x: bounds.left, y: bounds.bottom }, // Bottom-left
-      { x: bounds.right, y: bounds.bottom }, // Bottom-right
+      { x: bounds.left, y: bounds.bottom - playerHeight / 2 }, 
+      { x: bounds.right, y: bounds.bottom - playerHeight / 2 },
+      { x: bounds.left, y: bounds.bottom },
+      { x: bounds.right, y: bounds.bottom },
     ];
 
     for (const corner of corners) {
@@ -154,7 +154,7 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
     const initPixi = async () => {
       await app.init({
         backgroundColor: 0x1099bb,
-        resizeTo: pixiContainer.current || window,
+        resizeTo: pixiContainer.current!,
         autoDensity: true,
         resolution: window.devicePixelRatio || 1,
       });
@@ -163,7 +163,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
       if (!pixiContainer.current) return;
       pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
 
-      // World container setup
       const world = new Container();
       world.sortableChildren = true;
       worldRef.current = world;
@@ -185,7 +184,6 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         }
       }
 
-      // Lobby container setup
       const lobbyContainer = new Container();
       lobbyRef.current = lobbyContainer;
       
@@ -216,13 +214,11 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         const screenWidth = app.screen.width;
         const screenHeight = app.screen.height;
 
-        // Lobby view
         if (lobbyRef.current && background.texture.valid) {
             const bg = background;
             const bgRatio = bg.texture.width / bg.texture.height;
             const screenRatio = screenWidth / screenHeight;
             
-            // "Contain" logic to ensure the whole image is visible
             if (bgRatio > screenRatio) {
                 bg.width = screenWidth;
                 bg.height = screenWidth / bgRatio;
@@ -232,20 +228,17 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
             }
             bg.position.set(screenWidth / 2, screenHeight / 2);
 
-            // Center button on screen
             enterButton.position.set(
                 screenWidth / 2 - enterButton.width / 2,
                 screenHeight / 2 - enterButton.height / 2
             );
         }
 
-        // Game world view
         if (worldRef.current) {
             const worldContainer = worldRef.current;
             const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
             const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
 
-            // "Cover" logic to fill the screen with the map
             const scaleX = screenWidth / worldWidth;
             const scaleY = screenHeight / worldHeight;
             const scale = Math.max(scaleX, scaleY); 
@@ -326,42 +319,47 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         if (keysDown.current['d'] || keysDown.current['arrowright']) dx += 1;
 
         let newDirection: Player['direction'] = (playerSprite.currentAnimationName?.split('_')[0] as Player['direction']) || 'front';
+        let moved = false;
 
         if (dx !== 0 || dy !== 0) {
-          const magnitude = Math.sqrt(dx * dx + dy * dy);
-          const normalizedDx = dx / magnitude;
-          const normalizedDy = dy / magnitude;
-          
-          let targetX = playerSprite.x + normalizedDx * speed;
-          let targetY = playerSprite.y + normalizedDy * speed;
+            moved = true;
+            const magnitude = Math.sqrt(dx * dx + dy * dy);
+            const normalizedDx = dx / magnitude;
+            const normalizedDy = dy / magnitude;
+            
+            const targetX = playerSprite.x + normalizedDx * speed;
+            const targetY = playerSprite.y + normalizedDy * speed;
 
-          if (!checkCollision(targetX, playerSprite.y)) {
-              playerSprite.x = targetX;
-          }
-          if (!checkCollision(playerSprite.x, targetY)) {
-              playerSprite.y = targetY;
-          }
-            
-          if (Math.abs(dy) > Math.abs(dx)) {
-            newDirection = dy < 0 ? 'back' : 'front';
-          } else if (dx !== 0) {
-            newDirection = dx < 0 ? 'left' : 'right';
-          }
-            
-          updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
+            if (!checkCollision(targetX, targetY)) {
+                playerSprite.x = targetX;
+                playerSprite.y = targetY;
+            } else {
+                moved = false; // Don't animate if blocked
+            }
+
+            if (Math.abs(dy) > Math.abs(dx)) {
+                newDirection = dy < 0 ? 'back' : 'front';
+            } else if (dx !== 0) {
+                newDirection = dx < 0 ? 'left' : 'right';
+            }
+                
+            updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
         }
         
-        const moved = dx !== 0 || dy !== 0;
         const sheet = loadedSheetsRef.current[localPlayer.characterId];
-        const newAnimationName = moved ? `${newDirection}_walk` : playerSprite.currentAnimationName;
-        if (sheet && playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName || '']) {
-            playerSprite.textures = sheet.animations[newAnimationName || 'front_walk'];
+        const newAnimationName = `${newDirection}_walk`;
+
+        if (sheet && playerSprite.currentAnimationName !== newAnimationName && sheet.animations[newAnimationName]) {
+            playerSprite.textures = sheet.animations[newAnimationName];
             playerSprite.currentAnimationName = newAnimationName;
             playerSprite.animationSpeed = 0.15;
         }
         
-        if (moved && !playerSprite.playing) playerSprite.play();
-        else if (!moved && playerSprite.playing) playerSprite.gotoAndStop(0);
+        if (moved && !playerSprite.playing) {
+            playerSprite.play();
+        } else if (!moved && playerSprite.playing) {
+            playerSprite.gotoAndStop(0);
+        }
 
         const playerText = playerTextRef.current[localPlayer.uid];
         if (playerText && !playerText.destroyed) {
