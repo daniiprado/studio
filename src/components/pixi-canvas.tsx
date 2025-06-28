@@ -73,6 +73,7 @@ const PROXIMITY_RANGE = 50;
 
 const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange }: PixiCanvasProps) => {
   const pixiContainer = useRef<HTMLDivElement>(null);
+  const appRef = useRef<Application | null>(null);
   
   const propsRef = useRef({ currentPlayer, onlinePlayers, gameState, setGameState, onProximityChange });
   useLayoutEffect(() => {
@@ -80,39 +81,22 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
   });
 
   useEffect(() => {
-    if (!pixiContainer.current) {
-      return;
-    }
-
-    let app: Application | null = null;
-    let isMounted = true;
-
-    const keysDown: Record<string, boolean> = {};
-    const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
-    const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-    
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    
     const initPixi = async () => {
-        app = new Application();
+        if (!pixiContainer.current || appRef.current) {
+            return;
+        }
+
+        const app = new Application();
+        appRef.current = app;
         
         await app.init({
             backgroundColor: 0x1099bb,
-            resizeTo: pixiContainer.current!,
+            resizeTo: pixiContainer.current,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-
-        if (!isMounted || !pixiContainer.current) {
-            if (app) {
-              app.destroy(true, { children: true, texture: true, baseTexture: true });
-            }
-            app = null;
-            return;
-        }
         
-        pixiContainer.current.replaceChildren(app.canvas as HTMLCanvasElement);
+        pixiContainer.current.appendChild(app.canvas as HTMLCanvasElement);
         
         const world = new Container();
         app.stage.addChild(world);
@@ -164,9 +148,9 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (!app) return;
-            const screenWidth = app.screen.width;
-            const screenHeight = app.screen.height;
+            if (!appRef.current) return;
+            const screenWidth = appRef.current.screen.width;
+            const screenHeight = appRef.current.screen.height;
             const { gameState: currentGameState } = propsRef.current;
             
             world.visible = currentGameState === 'playing';
@@ -242,12 +226,19 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
         return false;
       };
 
+      const keysDown: Record<string, boolean> = {};
+      const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
+      const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+      
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
+
       const npcSprite = await createNpcSprite(world, loadedSheets);
       const npcProximityIndicator = createNpcProximityIndicator(world);
       let proximityState = false;
 
-      app.ticker.add(() => {
-        if (!app || !isMounted) return;
+      const tickerCallback = () => {
+        if (!appRef.current) return;
         const { gameState: currentGameState, currentPlayer: localPlayer, onlinePlayers: currentOnlinePlayers, onProximityChange: currentOnProximityChange } = propsRef.current;
 
         world.visible = currentGameState === 'playing';
@@ -331,19 +322,25 @@ const PixiCanvas = ({ currentPlayer, onlinePlayers, gameState, setGameState, onP
                 npcProximityIndicator.scale.set(pulse);
             }
         }
-      });
+      };
+
+      app.ticker.add(tickerCallback);
+
+      return () => {
+        window.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('keyup', onKeyUp);
+        app.ticker.remove(tickerCallback);
+      }
     };
 
-    initPixi();
+    initPixi().then(cleanup => {
+        return cleanup;
+    });
 
     return () => {
-      isMounted = false;
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      
-      if (app) {
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
-        app = null;
+      if (appRef.current) {
+        appRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
+        appRef.current = null;
       }
     };
   }, []);
@@ -403,8 +400,8 @@ async function updatePlayerSprites(world: Container, players: Player[], playerSp
     
     for(const uid in playerSprites){
         if(!activePlayerIds.has(uid)){
-            playerSprites[uid].destroy();
-            playerText[uid].destroy();
+            if (playerSprites[uid]) playerSprites[uid].destroy();
+            if (playerText[uid]) playerText[uid].destroy();
             delete playerSprites[uid];
             delete playerText[uid];
         }
@@ -447,7 +444,9 @@ async function updatePlayerSprites(world: Container, players: Player[], playerSp
                 }
                 text.x = sprite.x;
                 text.y = sprite.y - (sprite.height * sprite.scale.y) - 5;
-                text.text = player.name;
+                if (text.text !== player.name) {
+                    text.text = player.name;
+                }
             }
         } 
         if(!playerSprites[player.uid]) {
