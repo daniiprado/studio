@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useRef, useEffect, useLayoutEffect } from 'react';
@@ -56,9 +57,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         return;
     }
     
+    // These variables are accessible by the cleanup function via closure.
     let app: Application | null = new Application();
-    appRef.current = app;
-
     let tickerCallback: (() => void) | undefined;
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
@@ -67,6 +67,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const init = async () => {
       try {
         if (!app) throw new Error("App is not initialized");
+        appRef.current = app;
+
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x60bb38,
@@ -75,7 +77,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         });
 
         if (!pixiContainerRef.current || !appRef.current) {
-            app.destroy(true, true);
+            // Component was unmounted during async init
             return;
         }
 
@@ -99,7 +101,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         world.addChild(mapContainer);
 
         const baseTexture = await Assets.load<Texture>(TILESET_URL);
-        if (!pixiContainerRef.current || !appRef.current) { app.destroy(true, true); return; }
+        if (!pixiContainerRef.current || !appRef.current) { return; }
 
         const tilesetInfo = mapData.tilesets[0];
         const tilesetCols = 33;
@@ -164,7 +166,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
-        if (!pixiContainerRef.current || !appRef.current) { app.destroy(true, true); return; }
+        if (!pixiContainerRef.current || !appRef.current) { return; }
 
         const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
@@ -351,7 +353,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
 
         const npcSprite = await createNpcSprite(world, loadedSheets, loadingSheets);
-        if (!pixiContainerRef.current || !appRef.current) { app.destroy(true, true); return; }
+        if (!pixiContainerRef.current || !appRef.current) { return; }
         
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let npcProximityState = false;
@@ -486,36 +488,30 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
       } catch (error) {
         console.error("Error during Pixi initialization:", error);
-        try {
-            const appToDestroy = appRef.current;
-            if (appToDestroy && !appToDestroy.destroyed) {
-                appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
-            }
-        } catch (e) {
-            console.error("Error while destroying Pixi app after an init error:", e);
-        }
-        appRef.current = null;
       }
     };
     
     init();
 
     return () => {
+      // Centralized cleanup
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
       const appToDestroy = appRef.current;
-      if (appToDestroy) {
-        if(tickerCallback) appToDestroy.ticker.remove(tickerCallback);
-        if (!appToDestroy.destroyed) {
-          appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
+      if (appToDestroy && !appToDestroy.destroyed) {
+        // tickerCallback is defined within the useEffect scope
+        if (tickerCallback) {
+          appToDestroy.ticker.remove(tickerCallback);
         }
+        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
       }
       appRef.current = null;
+      app = null;
     };
   }, []); 
 
-  return <div className="absolute inset-0" ref={pixiContainerRef} />;
+  return <div className="absolute inset-0 z-10" ref={pixiContainerRef} />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
