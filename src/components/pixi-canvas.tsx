@@ -54,14 +54,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     if (!pixiElement) return;
 
     let isCancelled = false;
+    const app = new Application();
+    let tickerCallback: (() => void) | null = null;
     
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-    
-    const app = new Application();
-    let tickerCallback: (() => void) | null = null;
-    
+
     const init = async () => {
       try {
         await app.init({
