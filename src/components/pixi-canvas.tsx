@@ -498,7 +498,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      // Use the 'app' variable from this effect's closure, which is safer.
+      // Use the 'app' variable from this effect's closure. This is safer.
       if (app && !app.destroyed) {
         if (tickerCallback) {
           app.ticker.remove(tickerCallback);
@@ -506,12 +506,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
       
-      // Clear the ref if it points to the app we just destroyed.
+      // Clear the ref only if it points to the app we just destroyed.
       if (appRef.current === app) {
           appRef.current = null;
       }
-      
-      app = null;
     };
   }, []); 
 
