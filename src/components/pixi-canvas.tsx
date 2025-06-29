@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useLayoutEffect } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle, Rectangle } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
@@ -51,7 +51,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     propsRef.current = props;
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement || appRef.current) {
         return;
@@ -506,7 +506,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
       
-      // Clear the ref only if it points to the app we just destroyed.
+      // Clear the ref if it points to the app we just destroyed.
       if (appRef.current === app) {
           appRef.current = null;
       }
