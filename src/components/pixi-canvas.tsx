@@ -39,6 +39,7 @@ const PROXIMITY_RANGE = 75;
 const NPC_PROXIMITY_RANGE = 50;
 
 let collisionMap: boolean[][] = [];
+let officeMap: number[][] = [];
 
 const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
@@ -68,7 +69,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       try {
         await app.init({
             resizeTo: pixiElement,
-            backgroundColor: 0x1099bb,
+            backgroundColor: 0x60bb38,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
@@ -106,6 +107,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
         const baseLayer = mapData.layers.find(l => l.name === 'base');
         const treesLayer = mapData.layers.find(l => l.name === 'trees');
+        const officesLayer = mapData.layers.find(l => l.name === 'offices');
 
         if (baseLayer) {
             for (let i = 0; i < baseLayer.data.length; i++) {
@@ -139,6 +141,18 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                     const x = i % MAP_WIDTH_TILES;
                     const y = Math.floor(i / MAP_WIDTH_TILES);
                     collisionMap[y][x] = true;
+                }
+            }
+        }
+        
+        if (officesLayer) {
+            officeMap = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(0));
+            for (let i = 0; i < officesLayer.data.length; i++) {
+                const gid = officesLayer.data[i];
+                if (gid !== 0) {
+                    const tileX = i % MAP_WIDTH_TILES;
+                    const tileY = Math.floor(i / MAP_WIDTH_TILES);
+                    officeMap[tileY][tileX] = gid;
                 }
             }
         }
@@ -223,6 +237,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         }, 100);
 
         const checkCollision = (x: number, y: number): boolean => {
+            if (!collisionMap.length) return false;
             const playerWidth = 16 * 0.5;
             const playerHeight = 16 * 0.5;
             const bounds = {
@@ -403,13 +418,27 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 sprite.zIndex = sprite.y;
               }
             }
+
+            const getOfficeId = (x: number, y: number): number => {
+                if (!officeMap.length) return 0;
+                const tileX = Math.floor(x / TILE_SIZE);
+                const tileY = Math.floor(y / TILE_SIZE);
+                return officeMap[tileY]?.[tileX] || 0;
+            };
+
+            const localPlayerOfficeId = getOfficeId(playerSprite.x, playerSprite.y);
             
             for(const otherPlayer of onlinePlayers) {
                 const otherSprite = playerSprites[otherPlayer.uid];
                 if (!otherSprite) continue;
 
                 const distance = Math.hypot(playerSprite.x - otherSprite.x, playerSprite.y - otherSprite.y);
-                const canInteract = distance < PROXIMITY_RANGE;
+                const isInProximity = distance < PROXIMITY_RANGE;
+
+                const otherPlayerOfficeId = getOfficeId(otherSprite.x, otherSprite.y);
+                const isInSameOffice = localPlayerOfficeId !== 0 && otherPlayerOfficeId === localPlayerOfficeId;
+
+                const canInteract = isInProximity || isInSameOffice;
 
                 let iconContainer = playerInteractionIcons[otherPlayer.uid];
                 if (!iconContainer) {
@@ -479,7 +508,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     };
   }, []); 
 
-  return <main className="absolute inset-0 z-10" ref={pixiContainerRef} />;
+  return <div className="absolute inset-0 z-10" ref={pixiContainerRef} />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
