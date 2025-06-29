@@ -241,6 +241,16 @@ export default function GameClient() {
   return (
     <>
       <div className="h-screen w-full bg-background text-foreground overflow-hidden relative">
+        <main className="absolute inset-0 z-10">
+            <PixiCanvas 
+                currentPlayer={player} 
+                onlinePlayers={onlinePlayers} 
+                gameState={gameState}
+                setGameState={setGameState}
+                onProximityChange={setIsNearNpc}
+            />
+        </main>
+        
         <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between p-4 bg-card/50 border-b border-border backdrop-blur-sm">
             <h1 className="font-headline text-2xl text-primary font-bold tracking-wider">ServiAdventures</h1>
             <div className="flex items-center gap-4">
@@ -284,16 +294,6 @@ export default function GameClient() {
             </div>
         </header>
 
-        <main className="absolute inset-0 z-10">
-            <PixiCanvas 
-                currentPlayer={player} 
-                onlinePlayers={onlinePlayers} 
-                gameState={gameState}
-                setGameState={setGameState}
-                onProximityChange={setIsNearNpc}
-            />
-        </main>
-        
         {isCameraOpen && (
           <div className="absolute top-20 left-4 z-20 w-64 bg-black/50 p-2 rounded-lg border border-border">
             <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />

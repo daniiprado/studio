@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useRef, useEffect, useLayoutEffect } from 'react';
@@ -57,7 +56,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         return;
     }
     
-    const app = new Application();
+    let app: Application | null = new Application();
     appRef.current = app;
 
     let tickerCallback: (() => void) | undefined;
@@ -67,6 +66,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         
     const init = async () => {
       try {
+        if (!app) throw new Error("App is not initialized");
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x60bb38,
@@ -74,7 +74,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             resolution: window.devicePixelRatio || 1,
         });
 
-        if (!pixiContainerRef.current) {
+        if (!pixiContainerRef.current || !appRef.current) {
             app.destroy(true, true);
             return;
         }
@@ -99,7 +99,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         world.addChild(mapContainer);
 
         const baseTexture = await Assets.load<Texture>(TILESET_URL);
-        if (!pixiContainerRef.current) { app.destroy(true, true); return; }
+        if (!pixiContainerRef.current || !appRef.current) { app.destroy(true, true); return; }
 
         const tilesetInfo = mapData.tilesets[0];
         const tilesetCols = 33;
@@ -127,7 +127,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                   const tileSprite = new Sprite(texture);
                   tileSprite.x = (i % MAP_WIDTH_TILES) * TILE_SIZE;
                   tileSprite.y = Math.floor(i / MAP_WIDTH_TILES) * TILE_SIZE;
-                  tileSprite.tint = 0x60bb38;
+                  if (gid >= 133 && gid <= 208) { 
+                    tileSprite.tint = 0x60bb38;
+                  }
                   mapContainer.addChild(tileSprite);
                 } catch (e) {
                   console.error(`Error creating texture for GID ${gid}:`, e);
@@ -162,7 +164,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
-        if (!pixiContainerRef.current) { app.destroy(true, true); return; }
+        if (!pixiContainerRef.current || !appRef.current) { app.destroy(true, true); return; }
 
         const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
@@ -189,9 +191,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (app.destroyed || !pixiContainerRef.current) return;
-            const screenWidth = app.screen.width;
-            const screenHeight = app.screen.height;
+            if (!appRef.current || appRef.current.destroyed || !pixiContainerRef.current) return;
+            const screenWidth = appRef.current.screen.width;
+            const screenHeight = appRef.current.screen.height;
             const { gameState: currentGameState } = propsRef.current;
             
             world.visible = currentGameState === 'playing';
@@ -215,7 +217,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                         background.width = screenHeight * bgRatio;
                     } else { 
                         background.width = screenWidth;
-                        background.height = screenWidth / bgRatio;
+                        background.height = screenHeight / bgRatio;
                     }
                 }
                 background.position.set(screenWidth / 2, screenHeight / 2);
@@ -349,13 +351,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
 
         const npcSprite = await createNpcSprite(world, loadedSheets, loadingSheets);
-        if (!pixiContainerRef.current) { app.destroy(true, true); return; }
+        if (!pixiContainerRef.current || !appRef.current) { app.destroy(true, true); return; }
         
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let npcProximityState = false;
 
         tickerCallback = () => {
-            if (app.destroyed) return;
+            if (!appRef.current || appRef.current.destroyed) return;
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
             
@@ -474,7 +476,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 if (isNear) {
                     npcProximityIndicator.x = npcSprite.x;
                     npcProximityIndicator.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - 10;
-                    const pulse = Math.sin(app.ticker.lastTime / 200) * 0.1 + 0.9;
+                    const pulse = Math.sin(appRef.current.ticker.lastTime / 200) * 0.1 + 0.9;
                     npcProximityIndicator.scale.set(pulse);
                 }
             }
@@ -504,8 +506,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       
       const appToDestroy = appRef.current;
       if (appToDestroy) {
-        if(appToDestroy.ticker && tickerCallback) appToDestroy.ticker.remove(tickerCallback);
-        if (appToDestroy && !appToDestroy.destroyed) {
+        if(tickerCallback) appToDestroy.ticker.remove(tickerCallback);
+        if (!appToDestroy.destroyed) {
           appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
         }
       }
@@ -513,7 +515,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     };
   }, []); 
 
-  return <main className="absolute inset-0 z-10"><div className="absolute inset-0" ref={pixiContainerRef} /></main>;
+  return <div className="absolute inset-0" ref={pixiContainerRef} />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
