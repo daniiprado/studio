@@ -48,7 +48,6 @@ let officeMap: number[][] = [];
 
 const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
-  // Use a ref to hold the latest props, so the ticker can access them without re-triggering the effect.
   const propsRef = useRef(props);
   
   useEffect(() => {
@@ -62,7 +61,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     // This flag is essential for handling React StrictMode's mount/unmount/remount cycle.
     let isDestroyed = false;
     
-    // Create the app instance sychronously.
+    // Create the app instance sychronously. It's a constant for this effect's lifecycle.
     const app = new Application();
     
     let tickerCallback: ((time: any) => void) | null = null;
@@ -97,7 +96,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         world.addChild(mapContainer);
 
         const baseTexture = await Assets.load<Texture>(TILESET_URL);
-        if (isDestroyed || app.destroyed) return;
+        if (isDestroyed) return;
 
         const tilesetInfo = mapData.tilesets[0];
         const tilesetCols = 33; // from tiles.tsx
@@ -161,7 +160,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
-        if (isDestroyed || app.destroyed) return;
+        if (isDestroyed) return;
 
         const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
@@ -198,7 +197,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         let npcProximityState = false;
         
         const updatePlayerSprites = (allPlayers: Player[], currentUserId?: string) => {
-            if (isDestroyed || app.destroyed) return;
+            if (isDestroyed) return;
             const activePlayerIds = new Set(allPlayers.map(p => p.uid));
     
             // Remove sprites for players who are no longer active
@@ -225,11 +224,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                         if (character) {
                             (async () => {
                                 try {
-                                    if (isDestroyed || app.destroyed) return;
                                     const baseTexture = await Assets.load<Texture>(character.png.src);
-                                    if (isDestroyed || app.destroyed) return;
+                                    if (isDestroyed) return;
                                     const sheet = new Spritesheet(baseTexture, character.json);
                                     await sheet.parse();
+                                    if(isDestroyed) return;
                                     loadedSheets[player.characterId] = sheet;
                                 } catch(e) {
                                     console.error(`Failed to load character sheet for ${player.characterId}`, e);
@@ -304,11 +303,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             if (!loadedSheets[NPC.characterId] && !loadingSheets[NPC.characterId]) {
                 loadingSheets[NPC.characterId] = true;
                 try {
-                    if (isDestroyed || app.destroyed) return null;
                     const baseTexture = await Assets.load<Texture>(character.png.src);
-                    if (isDestroyed || app.destroyed) return null;
+                    if (isDestroyed) return null;
                     const sheet = new Spritesheet(baseTexture, character.json);
                     await sheet.parse();
+                    if (isDestroyed) return null;
                     loadedSheets[NPC.characterId] = sheet;
                 } catch(e) {
                     console.error(`Failed to load character sheet for ${NPC.characterId}`, e);
@@ -347,13 +346,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         }
 
         npcSprite = await createNpcSpriteInternal();
-        if (isDestroyed || app.destroyed) return;
+        if (isDestroyed) return;
         
         npcProximityIndicator = createNpcProximityIndicator(world);
 
         // --- Resize Handler ---
         const resizeHandler = () => {
-            if (isDestroyed || app.destroyed) return;
+            if (isDestroyed) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
@@ -396,7 +395,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       
         // --- Database Sync ---
         const updatePlayerInDb = throttle((data: Partial<Player>) => {
-            if (isDestroyed || app.destroyed) return;
+            if (isDestroyed) return;
             const { currentPlayer: localPlayer } = propsRef.current;
             if (!localPlayer) return;
             const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
@@ -433,7 +432,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         
         // --- Game Loop (Ticker) ---
         tickerCallback = () => {
-            if (isDestroyed || app.destroyed) return;
+            if (isDestroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
@@ -579,8 +578,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
     // Run the async init function
     init().catch(err => {
-      // Catch errors during async init, but don't try to destroy the app here.
-      // The cleanup function will handle that.
       console.error("Failed to initialize Pixi canvas:", err);
     });
 
