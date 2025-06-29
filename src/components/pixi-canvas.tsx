@@ -53,15 +53,17 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
-    // Create the app instance. It's a `const`, so its reference is stable for this effect's lifetime.
+    // Use a 'const' to ensure the app reference is stable for this effect's lifetime.
     const app = new Application();
+    
     let tickerCallback: ((time: any) => void) | null = null;
-    let onKeyDown: ((e: KeyboardEvent) => void) | null = null;
-    let onKeyUp: ((e: KeyboardEvent) => void) | null = null;
+    const keysDown: Record<string, boolean> = {};
+
+    const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
+    const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     
     // Wrap all async setup in a function.
-    const setup = async () => {
-        // `app` is available here from the outer scope.
+    const init = async () => {
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x60bb38,
@@ -71,9 +73,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         
         pixiElement.appendChild(app.view);
         
-        const keysDown: Record<string, boolean> = {};
-        onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
-        onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+        // Add event listeners correctly
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
         
@@ -530,18 +530,21 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.ticker.add(tickerCallback);
     };
 
-    setup().catch(err => {
+    init().catch(err => {
         console.error("Failed to initialize Pixi canvas:", err);
     });
 
+    // The cleanup function is the single source of truth for teardown.
     return () => {
-      if (onKeyDown) window.removeEventListener('keydown', onKeyDown);
-      if (onKeyUp) window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       
+      // Safety check: ensure the app instance exists and hasn't been destroyed.
       if (app && !app.destroyed) {
         if (tickerCallback) {
             app.ticker.remove(tickerCallback);
         }
+        // This is the only place the app is destroyed.
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
