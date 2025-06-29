@@ -2,13 +2,14 @@
 'use client';
 
 import React, { useRef, useEffect, useLayoutEffect } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle } from 'pixi.js';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle, Rectangle } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
 import { ref, update } from 'firebase/database';
 import { throttle } from 'lodash';
 import lobbyImage from '@/assets/lobby.jpg';
+import mapData from '@/assets/map.json';
 
 interface PixiCanvasProps {
   currentPlayer: Player;
@@ -20,45 +21,10 @@ interface PixiCanvasProps {
 
 type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterId?: string; };
 
-const TILE_SIZE = 16;
-const MAP_WIDTH_TILES = 40;
-const MAP_HEIGHT_TILES = 30;
-
-// prettier-ignore
-const mapLayout = [
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2, 2, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 1, 3, 3, 1, 2, 1, 3, 3, 2, 2, 1, 2, 1, 3, 3, 2, 1, 2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 1, 2, 1, 2, 2, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 1, 2, 2, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1],
-  [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1],
-  [1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
-  [1, 4, 4, 4, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 4, 4, 1],
-  [1, 4, 4, 4, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 4, 4, 1],
-  [1, 4, 4, 4, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 4, 4, 1],
-  [1, 4, 4, 4, 4, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 4, 4, 1],
-  [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-];
-
-const TILE_COLORS = { 0: 0x60bb38, 1: 0x4a4a4a, 2: 0xD3D3D3, 3: 0x8B4513, 4: 0x66B2FF };
+const TILE_SIZE = mapData.tilewidth;
+const MAP_WIDTH_TILES = mapData.width;
+const MAP_HEIGHT_TILES = mapData.height;
+const TILESET_URL = 'https://placehold.co/528x1024.png'; // Using placeholder for topDown_baseTiles.png
 
 const NPC = {
   uid: 'npc-quest-giver',
@@ -69,8 +35,10 @@ const NPC = {
   direction: 'front'
 } as const;
 
-const PROXIMITY_RANGE = 75; // Increased range
+const PROXIMITY_RANGE = 75;
 const NPC_PROXIMITY_RANGE = 50;
+
+let collisionMap: boolean[][] = [];
 
 const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
@@ -89,24 +57,18 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     }
     
     const app = new Application();
-    
+    appRef.current = app;
+
     let tickerCallback: (() => void) | undefined;
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
-
-    const getTileTypeAt = (x: number, y: number): number => {
-        const tileX = Math.floor(x / TILE_SIZE);
-        const tileY = Math.floor(y / TILE_SIZE);
-        if (tileX < 0 || tileX >= MAP_WIDTH_TILES || tileY < 0 || tileY >= MAP_HEIGHT_TILES) return -1;
-        return mapLayout[tileY]?.[tileX] ?? -1;
-    };
         
     const init = async () => {
       try {
         await app.init({
             resizeTo: pixiElement,
-            backgroundColor: 0x60bb38,
+            backgroundColor: 0x1099bb,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
@@ -117,7 +79,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         }
 
         pixiElement.appendChild(app.view);
-        appRef.current = app;
         
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
@@ -136,26 +97,59 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         mapContainer.zIndex = 0;
         world.addChild(mapContainer);
 
-        for (let y = 0; y < MAP_HEIGHT_TILES; y++) {
-            for (let x = 0; x < MAP_WIDTH_TILES; x++) {
-                const tileType = mapLayout[y]?.[x] as keyof typeof TILE_COLORS ?? 0;
-                const tile = new Sprite(Texture.WHITE);
-                tile.tint = TILE_COLORS[tileType];
-                tile.width = TILE_SIZE;
-                tile.height = TILE_SIZE;
-                tile.x = x * TILE_SIZE;
-                tile.y = y * TILE_SIZE;
-                mapContainer.addChild(tile);
+        const baseTexture = await Assets.load<Texture>(TILESET_URL);
+        if (!pixiContainerRef.current) { app.destroy(true, true); return; }
+
+        const tilesetInfo = mapData.tilesets[0];
+        const tilesetCols = tilesetInfo.source.endsWith('tiles.tsx') ? 33 : Math.floor(baseTexture.width / TILE_SIZE);
+        const firstGid = tilesetInfo.firstgid;
+
+        const baseLayer = mapData.layers.find(l => l.name === 'base');
+        const treesLayer = mapData.layers.find(l => l.name === 'trees');
+
+        if (baseLayer) {
+            for (let i = 0; i < baseLayer.data.length; i++) {
+                const gid = baseLayer.data[i];
+                if (gid === 0) continue;
+
+                const tileIndex = gid - firstGid;
+                const sx = (tileIndex % tilesetCols) * TILE_SIZE;
+                const sy = Math.floor(tileIndex / tilesetCols) * TILE_SIZE;
+
+                try {
+                  const texture = new Texture({
+                      source: baseTexture.source,
+                      frame: new Rectangle(sx, sy, TILE_SIZE, TILE_SIZE),
+                  });
+
+                  const tileSprite = new Sprite(texture);
+                  tileSprite.x = (i % MAP_WIDTH_TILES) * TILE_SIZE;
+                  tileSprite.y = Math.floor(i / MAP_WIDTH_TILES) * TILE_SIZE;
+                  mapContainer.addChild(tileSprite);
+                } catch (e) {
+                  console.error(`Error creating texture for GID ${gid}:`, e);
+                }
             }
         }
         
+        if (treesLayer) {
+            collisionMap = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(false));
+            for (let i = 0; i < treesLayer.data.length; i++) {
+                if (treesLayer.data[i] !== 0) {
+                    const x = i % MAP_WIDTH_TILES;
+                    const y = Math.floor(i / MAP_WIDTH_TILES);
+                    collisionMap[y][x] = true;
+                }
+            }
+        }
+
         const lobby = new Container();
         app.stage.addChild(lobby);
         
-        const backgroundTexture = await Assets.load(lobbyImage.src);
+        const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
         if (!pixiContainerRef.current) { app.destroy(true, true); return; }
 
-        const background = new Sprite(backgroundTexture);
+        const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
         lobby.addChild(background);
 
@@ -240,8 +234,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 { x: bounds.left, y: bounds.bottom }, { x: bounds.right, y: bounds.bottom },
             ];
             for (const corner of corners) {
-                const tileType = getTileTypeAt(corner.x, corner.y);
-                if (tileType === 1 || tileType === 3) return true;
+                const tileX = Math.floor(corner.x / TILE_SIZE);
+                const tileY = Math.floor(corner.y / TILE_SIZE);
+                if (collisionMap[tileY]?.[tileX]) return true;
             }
             return false;
         };
@@ -309,6 +304,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 } 
                 
                 if(!sprite) {
+                    if (!sheet) continue;
                     const animationName = `${player.direction || 'front'}_walk`;
                     const newSprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
                     newSprite.characterId = player.characterId;
@@ -407,16 +403,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 sprite.zIndex = sprite.y;
               }
             }
-
-            const isLocalInOffice = getTileTypeAt(playerSprite.x, playerSprite.y) === 4;
+            
             for(const otherPlayer of onlinePlayers) {
                 const otherSprite = playerSprites[otherPlayer.uid];
                 if (!otherSprite) continue;
 
-                const isOtherInOffice = getTileTypeAt(otherSprite.x, otherSprite.y) === 4;
                 const distance = Math.hypot(playerSprite.x - otherSprite.x, playerSprite.y - otherSprite.y);
-                const inProximity = distance < PROXIMITY_RANGE;
-                const canInteract = inProximity || (isLocalInOffice && isOtherInOffice);
+                const canInteract = distance < PROXIMITY_RANGE;
 
                 let iconContainer = playerInteractionIcons[otherPlayer.uid];
                 if (!iconContainer) {
@@ -473,18 +466,20 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-
+      
       const appToDestroy = appRef.current;
+      appRef.current = null;
+
       if (appToDestroy) {
-        if (!appToDestroy.destroyed) {
-            appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
+        if(tickerCallback) appToDestroy.ticker.remove(tickerCallback);
+        if (appToDestroy && !appToDestroy.destroyed) {
+          appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
         }
       }
-      appRef.current = null;
     };
   }, []); 
 
-  return <div ref={pixiContainerRef} className="absolute inset-0 z-10" />;
+  return <main className="absolute inset-0 z-10" ref={pixiContainerRef} />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
@@ -506,7 +501,7 @@ async function createNpcSprite(world: Container, loadedSheets: Record<string, Sp
     }
     
     const sheet = loadedSheets[NPC.characterId];
-    if (!sheet) return null; // Still loading
+    if (!sheet) return null;
 
     const npcSprite = new AnimatedSprite(sheet.animations[`${NPC.direction}_walk`]);
     npcSprite.characterId = NPC.characterId;
@@ -545,8 +540,8 @@ function createNpcProximityIndicator(world: Container) {
 
 function createMicIcon() {
     const mic = new Graphics();
-    mic.roundRect(-4, -8, 8, 10, 4).fill(0xCCCCCC); // Mic head
-    mic.rect(-1.5, 2, 3, 5).fill(0x999999); // Mic stand
+    mic.roundRect(-4, -8, 8, 10, 4).fill(0xCCCCCC);
+    mic.rect(-1.5, 2, 3, 5).fill(0x999999);
     mic.name = 'mic';
     mic.visible = false;
     return mic;
@@ -554,8 +549,8 @@ function createMicIcon() {
 
 function createCameraIcon() {
     const camera = new Graphics();
-    camera.roundRect(-8, -5, 16, 10, 3).fill(0x999999); // Body
-    camera.circle(2, 0, 3).fill(0x44DDFF); // Lens
+    camera.roundRect(-8, -5, 16, 10, 3).fill(0x999999);
+    camera.circle(2, 0, 3).fill(0x44DDFF);
     camera.name = 'camera';
     camera.visible = false;
     return camera;
