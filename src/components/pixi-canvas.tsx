@@ -24,7 +24,7 @@ type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterI
 const TILE_SIZE = mapData.tilewidth;
 const MAP_WIDTH_TILES = mapData.width;
 const MAP_HEIGHT_TILES = mapData.height;
-const TILESET_URL = 'https://placehold.co/528x1024.png'; // Using placeholder for topDown_baseTiles.png
+const TILESET_URL = '/topDown_baseTiles.png'; 
 
 const NPC = {
   uid: 'npc-quest-giver',
@@ -102,7 +102,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         if (!pixiContainerRef.current) { app.destroy(true, true); return; }
 
         const tilesetInfo = mapData.tilesets[0];
-        const tilesetCols = tilesetInfo.source.endsWith('tiles.tsx') ? 33 : Math.floor(baseTexture.width / TILE_SIZE);
+        const tilesetCols = 33;
         const firstGid = tilesetInfo.firstgid;
 
         const baseLayer = mapData.layers.find(l => l.name === 'base');
@@ -127,6 +127,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                   const tileSprite = new Sprite(texture);
                   tileSprite.x = (i % MAP_WIDTH_TILES) * TILE_SIZE;
                   tileSprite.y = Math.floor(i / MAP_WIDTH_TILES) * TILE_SIZE;
+                  tileSprite.tint = 0x60bb38;
                   mapContainer.addChild(tileSprite);
                 } catch (e) {
                   console.error(`Error creating texture for GID ${gid}:`, e);
@@ -497,18 +498,17 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       window.removeEventListener('keyup', onKeyUp);
       
       const appToDestroy = appRef.current;
-      appRef.current = null;
-
-      if (appToDestroy) {
-        if(tickerCallback) appToDestroy.ticker.remove(tickerCallback);
-        if (appToDestroy && !appToDestroy.destroyed) {
-          appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
+      if (appToDestroy && !appToDestroy.destroyed) {
+        if (tickerCallback) {
+          appToDestroy.ticker.remove(tickerCallback);
         }
+        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
       }
+      appRef.current = null;
     };
   }, []); 
 
-  return <div className="absolute inset-0 z-10" ref={pixiContainerRef} />;
+  return <main className="absolute inset-0 z-10"><div className="absolute inset-0" ref={pixiContainerRef} /></main>;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
