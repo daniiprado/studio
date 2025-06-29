@@ -484,8 +484,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
       } catch (error) {
         console.error("Error during Pixi initialization:", error);
-        if (!app.destroyed) {
-            app.destroy(true, true);
+        try {
+            const appToDestroy = appRef.current;
+            if (appToDestroy && !appToDestroy.destroyed) {
+                appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
+            }
+        } catch (e) {
+            console.error("Error while destroying Pixi app after an init error:", e);
         }
         appRef.current = null;
       }
@@ -498,11 +503,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       window.removeEventListener('keyup', onKeyUp);
       
       const appToDestroy = appRef.current;
-      if (appToDestroy && !appToDestroy.destroyed) {
-        if (tickerCallback) {
-          appToDestroy.ticker.remove(tickerCallback);
+      if (appToDestroy) {
+        if(appToDestroy.ticker && tickerCallback) appToDestroy.ticker.remove(tickerCallback);
+        if (appToDestroy && !appToDestroy.destroyed) {
+          appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
         }
-        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
       }
       appRef.current = null;
     };
