@@ -60,8 +60,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     
     const app = new Application();
+    let tickerCallback: (() => void) | null = null;
     
-    (async () => {
+    const init = async () => {
+      try {
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x60bb38,
@@ -396,7 +398,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             return false;
         };
         
-        const tickerCallback = () => {
+        tickerCallback = () => {
             if (isCancelled || app.destroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
@@ -527,16 +529,22 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
         app.ticker.add(tickerCallback);
 
-    }).catch(error => {
+      } catch (error) {
         console.error("Unhandled error during Pixi initialization:", error);
-    });
+      }
+    };
+    
+    init();
 
     return () => {
       isCancelled = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      if (!app.destroyed) {
+      if (app && !app.destroyed) {
+        if(tickerCallback) {
+            app.ticker.remove(tickerCallback);
+        }
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
