@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useRef, useLayoutEffect } from 'react';
+import React, { useRef, useLayoutEffect, useEffect } from 'react';
 import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle, Rectangle } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
@@ -43,32 +42,39 @@ let officeMap: number[][] = [];
 
 const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
   const playerInteractionIconsRef = useRef<Record<string, Container>>({});
   const propsRef = useRef(props);
   
-  useLayoutEffect(() => {
+  const pixiStateRef = useRef<{
+    app: Application | null;
+    tickerCallback: (() => void) | null;
+    keysDown: Record<string, boolean>;
+    eventListenersAttached: boolean;
+  }>({
+    app: null,
+    tickerCallback: null,
+    keysDown: {},
+    eventListenersAttached: false,
+  });
+
+  useEffect(() => {
     propsRef.current = props;
   });
 
   useLayoutEffect(() => {
     const pixiElement = pixiContainerRef.current;
-    if (!pixiElement || appRef.current) {
+    if (!pixiElement || pixiStateRef.current.app) {
         return;
     }
     
-    // These variables are accessible by the cleanup function via closure.
-    let app: Application | null = new Application();
-    let tickerCallback: (() => void) | undefined;
-    const keysDown: Record<string, boolean> = {};
-    const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
-    const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+    const app = new Application();
+    pixiStateRef.current.app = app;
+    
+    const onKeyDown = (e: KeyboardEvent) => { pixiStateRef.current.keysDown[e.key.toLowerCase()] = true; };
+    const onKeyUp = (e: KeyboardEvent) => { pixiStateRef.current.keysDown[e.key.toLowerCase()] = false; };
         
     const init = async () => {
       try {
-        if (!app) throw new Error("App is not initialized");
-        appRef.current = app;
-
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x60bb38,
@@ -76,15 +82,15 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             resolution: window.devicePixelRatio || 1,
         });
 
-        if (!pixiContainerRef.current || !appRef.current) {
-            // Component was unmounted during async init
-            return;
-        }
+        if (!pixiContainerRef.current) return;
 
         pixiElement.appendChild(app.view);
         
-        window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('keyup', onKeyUp);
+        if (!pixiStateRef.current.eventListenersAttached) {
+            window.addEventListener('keydown', onKeyDown);
+            window.addEventListener('keyup', onKeyUp);
+            pixiStateRef.current.eventListenersAttached = true;
+        }
         
         const playerSprites: Record<string, PlayerSprite> = {};
         const playerText: Record<string, Text> = {};
@@ -101,7 +107,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         world.addChild(mapContainer);
 
         const baseTexture = await Assets.load<Texture>(TILESET_URL);
-        if (!pixiContainerRef.current || !appRef.current) { return; }
+        if (!pixiContainerRef.current || !pixiStateRef.current.app) return;
 
         const tilesetInfo = mapData.tilesets[0];
         const tilesetCols = 33;
@@ -166,7 +172,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
-        if (!pixiContainerRef.current || !appRef.current) { return; }
+        if (!pixiContainerRef.current || !pixiStateRef.current.app) return;
 
         const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
@@ -193,9 +199,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         lobby.addChild(enterButton);
 
         const resizeHandler = () => {
-            if (!appRef.current || appRef.current.destroyed || !pixiContainerRef.current) return;
-            const screenWidth = appRef.current.screen.width;
-            const screenHeight = appRef.current.screen.height;
+            const currentApp = pixiStateRef.current.app;
+            if (!currentApp || currentApp.destroyed || !pixiContainerRef.current) return;
+            const screenWidth = currentApp.screen.width;
+            const screenHeight = currentApp.screen.height;
             const { gameState: currentGameState } = propsRef.current;
             
             world.visible = currentGameState === 'playing';
@@ -353,13 +360,14 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
 
         const npcSprite = await createNpcSprite(world, loadedSheets, loadingSheets);
-        if (!pixiContainerRef.current || !appRef.current) { return; }
+        if (!pixiContainerRef.current || !pixiStateRef.current.app) return;
         
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let npcProximityState = false;
 
-        tickerCallback = () => {
-            if (!appRef.current || appRef.current.destroyed) return;
+        pixiStateRef.current.tickerCallback = () => {
+            const currentApp = pixiStateRef.current.app;
+            if (!currentApp || currentApp.destroyed) return;
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
             
@@ -373,10 +381,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
             const speed = 2.5;
             let dx = 0; let dy = 0;
-            if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
-            if (keysDown['s'] || keysDown['arrowdown']) dy += 1;
-            if (keysDown['a'] || keysDown['arrowleft']) dx -= 1;
-            if (keysDown['d'] || keysDown['arrowright']) dx += 1;
+            const currentKeysDown = pixiStateRef.current.keysDown;
+            if (currentKeysDown['w'] || currentKeysDown['arrowup']) dy -= 1;
+            if (currentKeysDown['s'] || currentKeysDown['arrowdown']) dy += 1;
+            if (currentKeysDown['a'] || currentKeysDown['arrowleft']) dx -= 1;
+            if (currentKeysDown['d'] || currentKeysDown['arrowright']) dx += 1;
             
             let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as any || 'front';
             let moved = false;
@@ -478,13 +487,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 if (isNear) {
                     npcProximityIndicator.x = npcSprite.x;
                     npcProximityIndicator.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - 10;
-                    const pulse = Math.sin(appRef.current.ticker.lastTime / 200) * 0.1 + 0.9;
+                    const pulse = Math.sin(currentApp.ticker.lastTime / 200) * 0.1 + 0.9;
                     npcProximityIndicator.scale.set(pulse);
                 }
             }
         };
 
-        app.ticker.add(tickerCallback);
+        app.ticker.add(pixiStateRef.current.tickerCallback);
 
       } catch (error) {
         console.error("Error during Pixi initialization:", error);
@@ -494,26 +503,33 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     init();
 
     return () => {
-      // Centralized cleanup
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
+      // This is the cleanup function.
+      const state = pixiStateRef.current;
       
-      // Use the 'app' variable from this effect's closure. This is safer.
-      if (app && !app.destroyed) {
-        if (tickerCallback) {
-          app.ticker.remove(tickerCallback);
+      if (state.eventListenersAttached) {
+        window.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('keyup', onKeyUp);
+        state.eventListenersAttached = false;
+      }
+
+      if (state.app && !state.app.destroyed) {
+        if (state.tickerCallback) {
+          state.app.ticker.remove(state.tickerCallback);
         }
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        state.app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
       
-      // Clear the ref if it points to the app we just destroyed.
-      if (appRef.current === app) {
-          appRef.current = null;
-      }
+      // Reset the state ref for the next render.
+      pixiStateRef.current = {
+        app: null,
+        tickerCallback: null,
+        keysDown: {},
+        eventListenersAttached: false,
+      };
     };
   }, []); 
 
-  return <main className="absolute inset-0 z-10" ref={pixiContainerRef} />;
+  return <div ref={pixiContainerRef} />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
