@@ -51,28 +51,17 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
   useLayoutEffect(() => {
     const pixiElement = pixiContainerRef.current;
-    if (!pixiElement) {
-        return;
-    }
-    
-    // Create the app instance immediately and synchronously.
-    const app = new Application();
-    
-    // All other state for this effect run is local.
-    let tickerCallback: (() => void) | null = null;
-    const keysDown: Record<string, boolean> = {};
+    if (!pixiElement) return;
 
+    let isCancelled = false;
+    
+    const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     
-    // The main setup logic is in an async IIFE.
+    const app = new Application();
+    
     (async () => {
-        // Prevent race conditions if the component has been unmounted while assets were loading.
-        if (!pixiContainerRef.current) {
-            if (!app.destroyed) app.destroy(true, { children: true, texture: true, baseTexture: true });
-            return;
-        }
-        
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x60bb38,
@@ -80,13 +69,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             resolution: window.devicePixelRatio || 1,
         });
 
-        // Another check after async operation.
-        if (!pixiContainerRef.current) {
-            if (!app.destroyed) app.destroy(true, { children: true, texture: true, baseTexture: true });
-            return;
-        }
+        if (isCancelled) return;
+
         pixiElement.appendChild(app.view);
-        
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
         
@@ -99,7 +84,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         world.addChild(mapContainer);
 
         const baseTexture = await Assets.load<Texture>(TILESET_URL);
-        if (app.destroyed || !pixiContainerRef.current) return;
+        if (isCancelled) return;
 
         const tilesetInfo = mapData.tilesets[0];
         const tilesetCols = 33;
@@ -161,7 +146,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
-        if (app.destroyed || !pixiContainerRef.current) return;
+        if (isCancelled) return;
 
         const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
@@ -183,78 +168,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         enterButton.eventMode = 'static';
         enterButton.cursor = 'pointer';
         enterButton.on('pointertap', () => {
-          if (pixiContainerRef.current) propsRef.current.setGameState('playing');
+          if (!isCancelled) propsRef.current.setGameState('playing');
         });
         lobby.addChild(enterButton);
-
-        const resizeHandler = () => {
-            if (app.destroyed || !pixiContainerRef.current) return;
-            const screenWidth = app.screen.width;
-            const screenHeight = app.screen.height;
-            const { gameState: currentGameState } = propsRef.current;
-            
-            world.visible = currentGameState === 'playing';
-            lobby.visible = currentGameState === 'lobby';
-            
-            if (currentGameState === 'playing') {
-                const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
-                const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
-                const scaleX = screenWidth / worldWidth;
-                const scaleY = screenHeight / worldHeight;
-                const scale = Math.max(1, Math.min(scaleX, scaleY));
-                world.scale.set(scale);
-                world.x = (screenWidth - (worldWidth * scale)) / 2;
-                world.y = (screenHeight - (worldHeight * scale)) / 2;
-            } else {
-                 if (background.texture.valid) {
-                    const bgRatio = background.texture.width / background.texture.height;
-                    const screenRatio = screenWidth / screenHeight;
-                    if (bgRatio > screenRatio) { 
-                        background.height = screenHeight;
-                        background.width = screenHeight * bgRatio;
-                    } else { 
-                        background.width = screenWidth;
-                        background.height = screenHeight / bgRatio;
-                    }
-                }
-                background.position.set(screenWidth / 2, screenHeight / 2);
-                enterButton.position.set(
-                    screenWidth / 2 - enterButton.width / 2,
-                    screenHeight / 2 - enterButton.height / 2
-                );
-            }
-        };
-
-        app.renderer.on('resize', resizeHandler);
-        resizeHandler();
-      
-        const updatePlayerInDb = throttle((data: Partial<Player>) => {
-            if (!pixiContainerRef.current) return;
-            const { currentPlayer: localPlayer } = propsRef.current;
-            if (!localPlayer) return;
-            const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
-            update(playerRef, data);
-        }, 100);
-
-        const checkCollision = (x: number, y: number): boolean => {
-            if (!collisionMap.length) return false;
-            const playerWidth = 16 * 0.5;
-            const playerHeight = 16 * 0.5;
-            const bounds = {
-                left: x - playerWidth / 2, right: x + playerWidth / 2,
-                top: y - playerHeight, bottom: y,
-            };
-            const corners = [
-                { x: bounds.left, y: bounds.top }, { x: bounds.right, y: bounds.top },
-                { x: bounds.left, y: bounds.bottom }, { x: bounds.right, y: bounds.bottom },
-            ];
-            for (const corner of corners) {
-                const tileX = Math.floor(corner.x / TILE_SIZE);
-                const tileY = Math.floor(corner.y / TILE_SIZE);
-                if (collisionMap[tileY]?.[tileX]) return true;
-            }
-            return false;
-        };
 
         const playerSprites: Record<string, PlayerSprite> = {};
         const playerText: Record<string, Text> = {};
@@ -289,8 +205,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                         if (character) {
                             (async () => {
                                 try {
+                                    if (isCancelled) return;
                                     const baseTexture = await Assets.load<Texture>(character.png.src);
-                                    if (app.destroyed) return;
+                                    if (isCancelled || app.destroyed) return;
                                     const sheet = new Spritesheet(baseTexture, character.json);
                                     await sheet.parse();
                                     loadedSheets[player.characterId] = sheet;
@@ -356,13 +273,132 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             }
         };
 
-        npcSprite = await createNpcSprite(world, loadedSheets, loadingSheets);
-        if (app.destroyed || !pixiContainerRef.current) return;
+        const createNpcSpriteInternal = async () => {
+            const character = CHARACTERS_MAP[NPC.characterId];
+            if (!character) return null;
+        
+            if (!loadedSheets[NPC.characterId] && !loadingSheets[NPC.characterId]) {
+                loadingSheets[NPC.characterId] = true;
+                try {
+                    if (isCancelled) return null;
+                    const baseTexture = await Assets.load<Texture>(character.png.src);
+                    if (isCancelled) return null;
+                    const sheet = new Spritesheet(baseTexture, character.json);
+                    await sheet.parse();
+                    loadedSheets[NPC.characterId] = sheet;
+                } catch(e) {
+                    console.error(`Failed to load character sheet for ${NPC.characterId}`, e);
+                    delete loadingSheets[NPC.characterId];
+                    return null;
+                }
+            }
+            
+            const sheet = loadedSheets[NPC.characterId];
+            if (!sheet) return null;
+        
+            const newNpcSprite: PlayerSprite = new AnimatedSprite(sheet.animations[`${NPC.direction}_walk`]);
+            newNpcSprite.characterId = NPC.characterId;
+            newNpcSprite.gotoAndStop(0);
+            newNpcSprite.anchor.set(0.5);
+            newNpcSprite.scale.set(0.5);
+            newNpcSprite.x = NPC.x;
+            newNpcSprite.y = NPC.y;
+            newNpcSprite.zIndex = NPC.y;
+        
+            const text = new Text({
+                text: NPC.name,
+                style: new TextStyle({
+                  fontFamily: 'Inter, sans-serif', fontSize: 12,
+                  fill: 0xffff00, stroke: { color: 0x000000, width: 3, join: 'round' },
+                  align: 'center',
+                })
+            });
+            text.anchor.set(0.5, 1);
+            text.x = newNpcSprite.x;
+            text.y = newNpcSprite.y - (newNpcSprite.height * newNpcSprite.scale.y) - 5;
+            text.zIndex = newNpcSprite.zIndex + 1;
+            
+            world.addChild(newNpcSprite, text);
+            return newNpcSprite;
+        }
+
+        npcSprite = await createNpcSpriteInternal();
+        if (isCancelled) return;
         
         npcProximityIndicator = createNpcProximityIndicator(world);
 
-        tickerCallback = () => {
-            if (app.destroyed) return;
+        const resizeHandler = () => {
+            if (isCancelled || app.destroyed) return;
+            const screenWidth = app.screen.width;
+            const screenHeight = app.screen.height;
+            const { gameState: currentGameState } = propsRef.current;
+            
+            world.visible = currentGameState === 'playing';
+            lobby.visible = currentGameState === 'lobby';
+            
+            if (currentGameState === 'playing') {
+                const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
+                const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
+                const scaleX = screenWidth / worldWidth;
+                const scaleY = screenHeight / worldHeight;
+                const scale = Math.max(1, Math.min(scaleX, scaleY));
+                world.scale.set(scale);
+                world.x = (screenWidth - (worldWidth * scale)) / 2;
+                world.y = (screenHeight - (worldHeight * scale)) / 2;
+            } else {
+                 if (background.texture.valid) {
+                    const bgRatio = background.texture.width / background.texture.height;
+                    const screenRatio = screenWidth / screenHeight;
+                    if (bgRatio > screenRatio) { 
+                        background.height = screenHeight;
+                        background.width = screenHeight * bgRatio;
+                    } else { 
+                        background.width = screenWidth;
+                        background.height = screenHeight / bgRatio;
+                    }
+                }
+                background.position.set(screenWidth / 2, screenHeight / 2);
+                enterButton.position.set(
+                    screenWidth / 2 - enterButton.width / 2,
+                    screenHeight / 2 - enterButton.height / 2
+                );
+            }
+        };
+
+        app.renderer.on('resize', resizeHandler);
+        resizeHandler();
+      
+        const updatePlayerInDb = throttle((data: Partial<Player>) => {
+            if (isCancelled) return;
+            const { currentPlayer: localPlayer } = propsRef.current;
+            if (!localPlayer) return;
+            const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
+            update(playerRef, data);
+        }, 100);
+
+        const checkCollision = (x: number, y: number): boolean => {
+            if (!collisionMap.length) return false;
+            const playerWidth = 16 * 0.5;
+            const playerHeight = 16 * 0.5;
+            const bounds = {
+                left: x - playerWidth / 2, right: x + playerWidth / 2,
+                top: y - playerHeight, bottom: y,
+            };
+            const corners = [
+                { x: bounds.left, y: bounds.top }, { x: bounds.right, y: bounds.top },
+                { x: bounds.left, y: bounds.bottom }, { x: bounds.right, y: bounds.bottom },
+            ];
+            for (const corner of corners) {
+                const tileX = Math.floor(corner.x / TILE_SIZE);
+                const tileY = Math.floor(corner.y / TILE_SIZE);
+                if (collisionMap[tileY]?.[tileX]) return true;
+            }
+            return false;
+        };
+        
+        const tickerCallback = () => {
+            if (isCancelled || app.destroyed) return;
+
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
             
@@ -491,21 +527,16 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
         app.ticker.add(tickerCallback);
 
-    })().catch(error => {
-        // Log the error but let the cleanup function in the return statement handle the teardown.
+    }).catch(error => {
         console.error("Unhandled error during Pixi initialization:", error);
     });
 
-    // The cleanup function is the single source of truth for teardown.
     return () => {
+      isCancelled = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      // Safely destroy the app instance.
-      if (app && !app.destroyed) {
-        if (tickerCallback) {
-            app.ticker.remove(tickerCallback);
-        }
+      if (!app.destroyed) {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
@@ -514,52 +545,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
   return <div ref={pixiContainerRef} className="w-full h-full" />;
 };
 
-async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
-    const character = CHARACTERS_MAP[NPC.characterId];
-    if (!character) return null;
-
-    if (!loadedSheets[NPC.characterId] && !loadingSheets[NPC.characterId]) {
-        loadingSheets[NPC.characterId] = true;
-        try {
-            const baseTexture = await Assets.load<Texture>(character.png.src);
-            const sheet = new Spritesheet(baseTexture, character.json);
-            await sheet.parse();
-            loadedSheets[NPC.characterId] = sheet;
-        } catch(e) {
-            console.error(`Failed to load character sheet for ${NPC.characterId}`, e);
-            delete loadingSheets[NPC.characterId];
-            return null;
-        }
-    }
-    
-    const sheet = loadedSheets[NPC.characterId];
-    if (!sheet) return null;
-
-    const npcSprite: PlayerSprite = new AnimatedSprite(sheet.animations[`${NPC.direction}_walk`]);
-    npcSprite.characterId = NPC.characterId;
-    npcSprite.gotoAndStop(0);
-    npcSprite.anchor.set(0.5);
-    npcSprite.scale.set(0.5);
-    npcSprite.x = NPC.x;
-    npcSprite.y = NPC.y;
-    npcSprite.zIndex = NPC.y;
-
-    const text = new Text({
-        text: NPC.name,
-        style: new TextStyle({
-          fontFamily: 'Inter, sans-serif', fontSize: 12,
-          fill: 0xffff00, stroke: { color: 0x000000, width: 3, join: 'round' },
-          align: 'center',
-        })
-    });
-    text.anchor.set(0.5, 1);
-    text.x = npcSprite.x;
-    text.y = npcSprite.y - (npcSprite.height * npcSprite.scale.y) - 5;
-    text.zIndex = npcSprite.zIndex + 1;
-    
-    world.addChild(npcSprite, text);
-    return npcSprite;
-}
 
 function createNpcProximityIndicator(world: Container) {
     const indicator = new Graphics();
