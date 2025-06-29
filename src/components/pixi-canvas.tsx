@@ -498,20 +498,24 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      const appToDestroy = appRef.current;
-      if (appToDestroy && !appToDestroy.destroyed) {
-        // tickerCallback is defined within the useEffect scope
+      // Use the 'app' variable from this effect's closure, which is safer.
+      if (app && !app.destroyed) {
         if (tickerCallback) {
-          appToDestroy.ticker.remove(tickerCallback);
+          app.ticker.remove(tickerCallback);
         }
-        appToDestroy.destroy(true, { children: true, texture: true, baseTexture: true });
+        app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
-      appRef.current = null;
+      
+      // Clear the ref if it points to the app we just destroyed.
+      if (appRef.current === app) {
+          appRef.current = null;
+      }
+      
       app = null;
     };
   }, []); 
 
-  return <div className="absolute inset-0 z-10" ref={pixiContainerRef} />;
+  return <main className="absolute inset-0 z-10" ref={pixiContainerRef} />;
 };
 
 async function createNpcSprite(world: Container, loadedSheets: Record<string, Spritesheet>, loadingSheets: Record<string, boolean>) {
