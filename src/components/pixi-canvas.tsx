@@ -60,6 +60,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
 
     const init = async () => {
       try {
@@ -73,8 +75,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         if (isCancelled) return;
 
         pixiElement.appendChild(app.view);
-        window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('keyup', onKeyUp);
         
         const world = new Container();
         world.sortableChildren = true;
