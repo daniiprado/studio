@@ -53,7 +53,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
-    // Use a 'const' to ensure the app reference is stable for this effect's lifetime.
+    // This flag is essential for handling React StrictMode's mount/unmount/remount cycle.
+    let isDestroyed = false;
+    
+    // Create the app instance sychronously.
     const app = new Application();
     
     let tickerCallback: ((time: any) => void) | null = null;
@@ -62,18 +65,19 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     
-    // Wrap all async setup in a function.
+    // Asynchronous initialization logic.
     const init = async () => {
+        // Init PIXI
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x60bb38,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-        
+        if (isDestroyed) return;
+
         pixiElement.appendChild(app.view);
         
-        // Add event listeners correctly
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
         
@@ -86,7 +90,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         world.addChild(mapContainer);
 
         const baseTexture = await Assets.load<Texture>(TILESET_URL);
-        if (app.destroyed) return;
+        if (isDestroyed || app.destroyed) return;
 
         const tilesetInfo = mapData.tilesets[0];
         const tilesetCols = 33;
@@ -148,7 +152,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
-        if (app.destroyed) return;
+        if (isDestroyed || app.destroyed) return;
 
         const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
@@ -170,7 +174,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         enterButton.eventMode = 'static';
         enterButton.cursor = 'pointer';
         enterButton.on('pointertap', () => {
-          if (!app.destroyed) propsRef.current.setGameState('playing');
+          if (!isDestroyed) propsRef.current.setGameState('playing');
         });
         lobby.addChild(enterButton);
 
@@ -184,7 +188,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         let npcProximityState = false;
         
         const updatePlayerSprites = (allPlayers: Player[], currentUserId?: string) => {
-            if (app.destroyed) return;
+            if (isDestroyed || app.destroyed) return;
             const activePlayerIds = new Set(allPlayers.map(p => p.uid));
     
             for(const uid in playerSprites){
@@ -208,9 +212,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                         if (character) {
                             (async () => {
                                 try {
-                                    if (app.destroyed) return;
+                                    if (isDestroyed || app.destroyed) return;
                                     const baseTexture = await Assets.load<Texture>(character.png.src);
-                                    if (app.destroyed) return;
+                                    if (isDestroyed || app.destroyed) return;
                                     const sheet = new Spritesheet(baseTexture, character.json);
                                     await sheet.parse();
                                     loadedSheets[player.characterId] = sheet;
@@ -283,9 +287,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             if (!loadedSheets[NPC.characterId] && !loadingSheets[NPC.characterId]) {
                 loadingSheets[NPC.characterId] = true;
                 try {
-                    if (app.destroyed) return null;
+                    if (isDestroyed || app.destroyed) return null;
                     const baseTexture = await Assets.load<Texture>(character.png.src);
-                    if (app.destroyed) return null;
+                    if (isDestroyed || app.destroyed) return null;
                     const sheet = new Spritesheet(baseTexture, character.json);
                     await sheet.parse();
                     loadedSheets[NPC.characterId] = sheet;
@@ -326,12 +330,12 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         }
 
         npcSprite = await createNpcSpriteInternal();
-        if (app.destroyed) return;
+        if (isDestroyed || app.destroyed) return;
         
         npcProximityIndicator = createNpcProximityIndicator(world);
 
         const resizeHandler = () => {
-            if (app.destroyed) return;
+            if (isDestroyed || app.destroyed) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
@@ -372,7 +376,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         resizeHandler();
       
         const updatePlayerInDb = throttle((data: Partial<Player>) => {
-            if (app.destroyed) return;
+            if (isDestroyed || app.destroyed) return;
             const { currentPlayer: localPlayer } = propsRef.current;
             if (!localPlayer) return;
             const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
@@ -400,7 +404,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
         
         tickerCallback = () => {
-            if (app.destroyed) return;
+            if (isDestroyed || app.destroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
@@ -531,11 +535,14 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     };
 
     init().catch(err => {
-        console.error("Failed to initialize Pixi canvas:", err);
+      // Catch errors during async init, but don't try to destroy the app here.
+      // The cleanup function will handle that.
+      console.error("Failed to initialize Pixi canvas:", err);
     });
 
-    // The cleanup function is the single source of truth for teardown.
+    // The single, reliable cleanup function.
     return () => {
+      isDestroyed = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
@@ -544,7 +551,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         if (tickerCallback) {
             app.ticker.remove(tickerCallback);
         }
-        // This is the only place the app is destroyed.
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
