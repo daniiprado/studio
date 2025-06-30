@@ -562,8 +562,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       window.removeEventListener('keyup', onKeyUp);
       
       // `app` is guaranteed to be defined here from the synchronous creation above.
-      // The only check we need is if it has already been destroyed.
-      if (app && !app.destroyed) {
+      // We also check if it has already been destroyed before trying to destroy it again.
+      if (typeof app?.destroy === 'function' && !app.destroyed) {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
