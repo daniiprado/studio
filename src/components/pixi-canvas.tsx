@@ -563,7 +563,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       
       // `app` is guaranteed to be defined here from the synchronous creation above.
       // We also check if it has already been destroyed before trying to destroy it again.
-      if (typeof app?.destroy === 'function' && !app.destroyed) {
+      if (!app.destroyed) {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
