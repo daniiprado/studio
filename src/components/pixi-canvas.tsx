@@ -547,9 +547,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
       } catch (error) {
         console.error("Error during Pixi initialization:", error);
-        if (!app.destroyed) {
-          app.destroy(true, { children: true, texture: true, baseTexture: true });
-        }
       }
     };
 
