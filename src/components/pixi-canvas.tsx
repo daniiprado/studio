@@ -95,7 +95,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-
         if (isDestroyed) return;
 
         pixiElement.appendChild(app.view);
@@ -316,7 +315,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
         
         const tickerCallback = (time: Ticker) => {
-            if (app.destroyed) return;
+            if (isDestroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
