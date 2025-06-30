@@ -11,6 +11,7 @@ import { throttle } from 'lodash';
 import lobbyImage from '@/assets/lobby.jpg';
 import mapData from '@/assets/map.json';
 
+// Define all props and constants at the top level
 interface PixiCanvasProps {
   currentPlayer: Player;
   onlinePlayers: Player[];
@@ -21,13 +22,11 @@ interface PixiCanvasProps {
 
 type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterId?: string; };
 
-// --- Map Constants ---
 const TILE_SIZE = mapData.tilewidth;
 const MAP_WIDTH_TILES = mapData.width;
 const MAP_HEIGHT_TILES = mapData.height;
 const TILESET_URL = '/topDown_baseTiles.png'; 
 
-// --- NPC Constants ---
 const NPC = {
   uid: 'npc-quest-giver',
   characterId: 'ana',
@@ -37,19 +36,43 @@ const NPC = {
   direction: 'front'
 } as const;
 
-// --- Interaction Constants ---
 const PROXIMITY_RANGE = 75;
 const NPC_PROXIMITY_RANGE = 50;
 
-// --- Collision and Office Maps (initialized in effect) ---
-let collisionMap: boolean[][] = [];
-let officeMap: number[][] = [];
+// Helper functions for creating UI elements
+function createNpcProximityIndicator(world: Container) {
+    const indicator = new Graphics();
+    indicator.circle(0, 0, 20).stroke({ width: 2, color: 0xFFFF00, alpha: 0.8 });
+    indicator.visible = false;
+    indicator.zIndex = 9999;
+    world.addChild(indicator);
+    return indicator;
+}
 
+function createMicIcon() {
+    const mic = new Graphics();
+    mic.roundRect(-4, -8, 8, 10, 4).fill(0xCCCCCC); // Main body
+    mic.rect(-1.5, 2, 3, 5).fill(0x999999); // Stand
+    mic.name = 'mic';
+    mic.visible = false;
+    return mic;
+}
 
+function createCameraIcon() {
+    const camera = new Graphics();
+    camera.roundRect(-8, -5, 16, 10, 3).fill(0x999999); // Body
+    camera.circle(2, 0, 3).fill(0x44DDFF); // Lens
+    camera.name = 'camera';
+    camera.visible = false;
+    return camera;
+}
+
+// The main component
 const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const propsRef = useRef(props);
   
+  // Keep propsRef updated with the latest props
   useEffect(() => {
     propsRef.current = props;
   });
@@ -58,33 +81,33 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
-    // This flag is essential for handling React StrictMode's mount/unmount/remount cycle.
+    // --- Stable Pattern Implementation ---
     let isDestroyed = false;
     
-    // Create the app instance sychronously. It's a constant for this effect's lifecycle.
+    // 1. Create the app instance sychronously. It's a `const` for this effect's lifecycle.
     const app = new Application();
     
+    // Declare all other long-lived variables here.
     let tickerCallback: ((time: any) => void) | null = null;
     const keysDown: Record<string, boolean> = {};
 
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
     
-    // Asynchronous initialization logic.
+    // 2. Asynchronous initialization logic in a dedicated function.
     const init = async () => {
-        // Init PIXI
+      try {
         await app.init({
             resizeTo: pixiElement,
             backgroundColor: 0x60bb38,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-        if (isDestroyed) return;
+        if (isDestroyed) return; // 3. Check cancellation flag after await
 
         pixiElement.appendChild(app.view);
-        
-        window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('keyup', onKeyUp);
         
         const world = new Container();
         world.sortableChildren = true;
@@ -94,17 +117,21 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         const mapContainer = new Container();
         mapContainer.zIndex = 0;
         world.addChild(mapContainer);
-
+        
         const baseTexture = await Assets.load<Texture>(TILESET_URL);
         if (isDestroyed) return;
 
         const tilesetInfo = mapData.tilesets[0];
-        const tilesetCols = 33; // from tiles.tsx
+        const tilesetCols = 33;
         const firstGid = tilesetInfo.firstgid;
 
         const baseLayer = mapData.layers.find(l => l.name === 'base');
         const treesLayer = mapData.layers.find(l => l.name === 'trees');
         const officesLayer = mapData.layers.find(l => l.name === 'offices');
+
+        // Initialized here, used in ticker
+        let collisionMap: boolean[][] = [];
+        let officeMap: number[][] = [];
 
         if (baseLayer) {
             for (let i = 0; i < baseLayer.data.length; i++) {
@@ -115,23 +142,18 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 const sx = (tileIndex % tilesetCols) * TILE_SIZE;
                 const sy = Math.floor(tileIndex / tilesetCols) * TILE_SIZE;
 
-                try {
-                  const texture = new Texture({
-                      source: baseTexture.source,
-                      frame: new Rectangle(sx, sy, TILE_SIZE, TILE_SIZE),
-                  });
+                const texture = new Texture({
+                    source: baseTexture.source,
+                    frame: new Rectangle(sx, sy, TILE_SIZE, TILE_SIZE),
+                });
 
-                  const tileSprite = new Sprite(texture);
-                  tileSprite.x = (i % MAP_WIDTH_TILES) * TILE_SIZE;
-                  tileSprite.y = Math.floor(i / MAP_WIDTH_TILES) * TILE_SIZE;
-                  mapContainer.addChild(tileSprite);
-                } catch (e) {
-                  console.error(`Error creating texture for GID ${gid}:`, e);
-                }
+                const tileSprite = new Sprite(texture);
+                tileSprite.x = (i % MAP_WIDTH_TILES) * TILE_SIZE;
+                tileSprite.y = Math.floor(i / MAP_WIDTH_TILES) * TILE_SIZE;
+                mapContainer.addChild(tileSprite);
             }
         }
         
-        // --- Collision and Office Map Initialization ---
         if (treesLayer) {
             collisionMap = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(false));
             for (let i = 0; i < treesLayer.data.length; i++) {
@@ -192,120 +214,17 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         const playerInteractionIcons: Record<string, Container> = {};
         const loadedSheets: Record<string, Spritesheet> = {};
         const loadingSheets: Record<string, boolean> = {};
-        let npcSprite: PlayerSprite | null = null;
-        let npcProximityIndicator: Graphics | null = null;
-        let npcProximityState = false;
         
-        const updatePlayerSprites = (allPlayers: Player[], currentUserId?: string) => {
-            if (isDestroyed) return;
-            const activePlayerIds = new Set(allPlayers.map(p => p.uid));
-    
-            // Remove sprites for players who are no longer active
-            for(const uid in playerSprites){
-                if(!activePlayerIds.has(uid)){
-                    if (playerSprites[uid]) playerSprites[uid].destroy();
-                    if (playerText[uid]) playerText[uid].destroy();
-                    if (playerInteractionIcons[uid]) playerInteractionIcons[uid].destroy();
-                    delete playerSprites[uid];
-                    delete playerText[uid];
-                    delete playerInteractionIcons[uid];
-                }
-            }
-            
-            // Add or update sprites for all active players
-            for (const player of allPlayers) {
-                if(!player.characterId || !player.uid || player.x === undefined || player.y === undefined) continue;
-        
-                // Load character sheet if not already loaded or loading
-                if(!loadedSheets[player.characterId]){
-                    if (!loadingSheets[player.characterId]) {
-                        loadingSheets[player.characterId] = true;
-                        const character = CHARACTERS_MAP[player.characterId];
-                        if (character) {
-                            (async () => {
-                                try {
-                                    const baseTexture = await Assets.load<Texture>(character.png.src);
-                                    if (isDestroyed) return;
-                                    const sheet = new Spritesheet(baseTexture, character.json);
-                                    await sheet.parse();
-                                    if(isDestroyed) return;
-                                    loadedSheets[player.characterId] = sheet;
-                                } catch(e) {
-                                    console.error(`Failed to load character sheet for ${player.characterId}`, e);
-                                    delete loadingSheets[player.characterId]; // Allow retrying
-                                }
-                            })();
-                        }
-                    }
-                    continue; // Skip this frame, will be created once sheet is loaded
-                }
-                
-                const sheet = loadedSheets[player.characterId];
-                let sprite = playerSprites[player.uid];
-                let text = playerText[player.uid];
-        
-                if(sprite){
-                    // If character changed, destroy and recreate
-                    if(sprite.characterId !== player.characterId) {
-                        sprite.destroy();
-                        if (text) text.destroy();
-                        delete playerSprites[player.uid];
-                        delete playerText[player.uid];
-                        sprite = undefined;
-                    } else if (player.uid !== currentUserId) {
-                        // Update position for other players
-                        sprite.x = player.x;
-                        sprite.y = player.y;
-                        const newAnim = `${player.direction || 'front'}_walk`;
-                        if(sprite.currentAnimationName !== newAnim && sheet.animations[newAnim]) {
-                           sprite.textures = sheet.animations[newAnim];
-                           sprite.currentAnimationName = newAnim;
-                           sprite.gotoAndStop(0);
-                        }
-                    }
-                } 
-                
-                if(!sprite) {
-                    if (!sheet) continue;
-                    const animationName = `${player.direction || 'front'}_walk`;
-                    const newSprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
-                    newSprite.characterId = player.characterId;
-                    newSprite.currentAnimationName = animationName;
-                    newSprite.animationSpeed = 0.15;
-                    newSprite.anchor.set(0.5);
-                    newSprite.scale.set(0.5);
-                    newSprite.x = player.x;
-                    newSprite.y = player.y;
-                    world.addChild(newSprite);
-                    playerSprites[player.uid] = newSprite;
-        
-                    // Create text label for the player
-                    const newText = new Text({
-                        text: player.name || 'Player',
-                        style: new TextStyle({
-                            fontFamily: 'Inter, sans-serif', fontSize: 12,
-                            fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' },
-                            align: 'center',
-                        })
-                    });
-                    newText.anchor.set(0.5, 1);
-                    world.addChild(newText);
-                    playerText[player.uid] = newText;
-                }
-            }
-        };
-
         const createNpcSpriteInternal = async () => {
             const character = CHARACTERS_MAP[NPC.characterId];
             if (!character) return null;
         
-            // Load NPC sheet if not already loaded or loading
             if (!loadedSheets[NPC.characterId] && !loadingSheets[NPC.characterId]) {
                 loadingSheets[NPC.characterId] = true;
                 try {
-                    const baseTexture = await Assets.load<Texture>(character.png.src);
+                    const npcBaseTexture = await Assets.load<Texture>(character.png.src);
                     if (isDestroyed) return null;
-                    const sheet = new Spritesheet(baseTexture, character.json);
+                    const sheet = new Spritesheet(npcBaseTexture, character.json);
                     await sheet.parse();
                     if (isDestroyed) return null;
                     loadedSheets[NPC.characterId] = sheet;
@@ -345,10 +264,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             return newNpcSprite;
         }
 
-        npcSprite = await createNpcSpriteInternal();
+        const npcSprite = await createNpcSpriteInternal();
         if (isDestroyed) return;
         
-        npcProximityIndicator = createNpcProximityIndicator(world);
+        const npcProximityIndicator = createNpcProximityIndicator(world);
+        let npcProximityState = false;
 
         // --- Resize Handler ---
         const resizeHandler = () => {
@@ -361,23 +281,22 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             lobby.visible = currentGameState === 'lobby';
             
             if (currentGameState === 'playing') {
-                // Fit the map to the screen while maintaining aspect ratio
                 const worldWidth = MAP_WIDTH_TILES * TILE_SIZE;
                 const worldHeight = MAP_HEIGHT_TILES * TILE_SIZE;
                 const scaleX = screenWidth / worldWidth;
                 const scaleY = screenHeight / worldHeight;
-                const scale = Math.max(1, Math.min(scaleX, scaleY)); // Ensure it scales up but doesn't over-pixelate
+                const scale = Math.max(1, Math.min(scaleX, scaleY));
                 world.scale.set(scale);
                 world.x = (screenWidth - (worldWidth * scale)) / 2;
                 world.y = (screenHeight - (worldHeight * scale)) / 2;
-            } else { // Lobby state
+            } else {
                  if (background.texture.valid) {
                     const bgRatio = background.texture.width / background.texture.height;
                     const screenRatio = screenWidth / screenHeight;
-                    if (bgRatio > screenRatio) { // background is wider than screen
+                    if (bgRatio > screenRatio) {
                         background.height = screenHeight;
                         background.width = screenHeight * bgRatio;
-                    } else { // background is taller than screen
+                    } else {
                         background.width = screenWidth;
                         background.height = screenHeight / bgRatio;
                     }
@@ -393,7 +312,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.renderer.on('resize', resizeHandler);
         resizeHandler();
       
-        // --- Database Sync ---
+        // --- Database Sync (throttled) ---
         const updatePlayerInDb = throttle((data: Partial<Player>) => {
             if (isDestroyed) return;
             const { currentPlayer: localPlayer } = propsRef.current;
@@ -405,17 +324,14 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         // --- Collision Detection ---
         const checkCollision = (x: number, y: number): boolean => {
             if (!collisionMap.length) return false;
-            // Use player's sprite dimensions for more accurate collision
-            const playerWidth = 16 * 0.5; // From sprite scale
-            const playerHeight = 16 * 0.5; // From sprite scale
-            // Define bounding box based on player's feet
+            const playerWidth = 16 * 0.5;
+            const playerHeight = 16 * 0.5;
             const bounds = {
                 left: x - playerWidth / 2,
                 right: x + playerWidth / 2,
-                top: y - playerHeight, // Top of player sprite
-                bottom: y, // Feet of player sprite
+                top: y - playerHeight,
+                bottom: y,
             };
-            // Check corners of the bounding box
             const corners = [
                 { x: bounds.left, y: bounds.top },
                 { x: bounds.right, y: bounds.top },
@@ -435,17 +351,106 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             if (isDestroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
-            resizeHandler();
+            resizeHandler(); // Keep resizing logic in the loop
             
+            // --- Update Player Sprites ---
             const allPlayers = localPlayer ? [localPlayer, ...onlinePlayers] : onlinePlayers;
-            updatePlayerSprites(allPlayers, localPlayer?.uid);
+            const activePlayerIds = new Set(allPlayers.map(p => p.uid));
+    
+            for(const uid in playerSprites){
+                if(!activePlayerIds.has(uid)){
+                    if (playerSprites[uid]) playerSprites[uid].destroy();
+                    if (playerText[uid]) playerText[uid].destroy();
+                    if (playerInteractionIcons[uid]) playerInteractionIcons[uid].destroy();
+                    delete playerSprites[uid];
+                    delete playerText[uid];
+                    delete playerInteractionIcons[uid];
+                }
+            }
+            
+            for (const player of allPlayers) {
+                if(!player.characterId || !player.uid || player.x === undefined || player.y === undefined) continue;
+        
+                if(!loadedSheets[player.characterId]){
+                    if (!loadingSheets[player.characterId]) {
+                        loadingSheets[player.characterId] = true;
+                        const character = CHARACTERS_MAP[player.characterId];
+                        if (character) {
+                            (async () => {
+                                try {
+                                    const charBaseTexture = await Assets.load<Texture>(character.png.src);
+                                    if (isDestroyed) return;
+                                    const sheet = new Spritesheet(charBaseTexture, character.json);
+                                    await sheet.parse();
+                                    if(isDestroyed) return;
+                                    loadedSheets[player.characterId] = sheet;
+                                } catch(e) {
+                                    console.error(`Failed to load character sheet for ${player.characterId}`, e);
+                                    delete loadingSheets[player.characterId];
+                                }
+                            })();
+                        }
+                    }
+                    continue;
+                }
+                
+                const sheet = loadedSheets[player.characterId];
+                let sprite = playerSprites[player.uid];
+                let text = playerText[player.uid];
+        
+                if(sprite){
+                    if(sprite.characterId !== player.characterId) {
+                        sprite.destroy();
+                        if (text) text.destroy();
+                        delete playerSprites[player.uid];
+                        delete playerText[player.uid];
+                        sprite = undefined;
+                    } else if (player.uid !== localPlayer?.uid) {
+                        sprite.x = player.x;
+                        sprite.y = player.y;
+                        const newAnim = `${player.direction || 'front'}_walk`;
+                        if(sprite.currentAnimationName !== newAnim && sheet.animations[newAnim]) {
+                           sprite.textures = sheet.animations[newAnim];
+                           sprite.currentAnimationName = newAnim;
+                           sprite.gotoAndStop(0);
+                        }
+                    }
+                } 
+                
+                if(!sprite) {
+                    if (!sheet) continue;
+                    const animationName = `${player.direction || 'front'}_walk`;
+                    const newSprite: PlayerSprite = new AnimatedSprite(sheet.animations[animationName]);
+                    newSprite.characterId = player.characterId;
+                    newSprite.currentAnimationName = animationName;
+                    newSprite.animationSpeed = 0.15;
+                    newSprite.anchor.set(0.5);
+                    newSprite.scale.set(0.5);
+                    newSprite.x = player.x;
+                    newSprite.y = player.y;
+                    world.addChild(newSprite);
+                    playerSprites[player.uid] = newSprite;
+        
+                    const newText = new Text({
+                        text: player.name || 'Player',
+                        style: new TextStyle({
+                            fontFamily: 'Inter, sans-serif', fontSize: 12,
+                            fill: 0xffffff, stroke: { color: 0x000000, width: 3, join: 'round' },
+                            align: 'center',
+                        })
+                    });
+                    newText.anchor.set(0.5, 1);
+                    world.addChild(newText);
+                    playerText[player.uid] = newText;
+                }
+            }
+
 
             if (gameState !== 'playing' || !localPlayer) return;
-
             const playerSprite = playerSprites[localPlayer.uid];
             if (!playerSprite || !playerSprite.parent) return;
 
-            // Player Movement
+            // --- Player Movement ---
             const speed = 2.5;
             let dx = 0; let dy = 0;
             if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
@@ -460,7 +465,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             if (dx !== 0 || dy !== 0) {
                 let canMoveX = !checkCollision(targetX, playerSprite.y);
                 let canMoveY = !checkCollision(playerSprite.x, targetY);
-                // Check diagonal movement collision
                 if (canMoveX && canMoveY && !checkCollision(targetX, targetY)) {
                     playerSprite.x = targetX;
                     playerSprite.y = targetY;
@@ -474,7 +478,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 }
             }
 
-            // Update animation and DB on move
             if (moved) {
                 if (dy < 0) newDirection = 'back';
                 else if (dy > 0) newDirection = 'front';
@@ -499,7 +502,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 if (playerSprite.playing) playerSprite.gotoAndStop(0);
             }
             
-            // Update Z-index and text position for all sprites
+            // --- Update Z-index and Text/Icon positions ---
             for (const uid in playerSprites) {
               const sprite = playerSprites[uid];
               const text = playerText[uid];
@@ -510,7 +513,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
               }
             }
 
-            // --- Office/Proximity Logic ---
             const getOfficeId = (x: number, y: number): number => {
                 if (!officeMap.length) return 0;
                 const tileX = Math.floor(x / TILE_SIZE);
@@ -529,16 +531,12 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
                 const otherPlayerOfficeId = getOfficeId(otherSprite.x, otherSprite.y);
                 const isInSameOffice = localPlayerOfficeId !== 0 && otherPlayerOfficeId === localPlayerOfficeId;
-
                 const canInteract = isInProximity || isInSameOffice;
 
                 let iconContainer = playerInteractionIcons[otherPlayer.uid];
                 if (!iconContainer) {
                     iconContainer = new Container();
-                    const micIcon = createMicIcon();
-                    const cameraIcon = createCameraIcon();
-                    cameraIcon.x = 15;
-                    iconContainer.addChild(micIcon, cameraIcon);
+                    iconContainer.addChild(createMicIcon(), createCameraIcon());
                     world.addChild(iconContainer);
                     playerInteractionIcons[otherPlayer.uid] = iconContainer;
                 }
@@ -546,7 +544,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 const micIcon = iconContainer.getChildByName('mic');
                 const cameraIcon = iconContainer.getChildByName('camera');
                 if (micIcon) micIcon.visible = canInteract && !!otherPlayer.isMicOn;
-                if (cameraIcon) cameraIcon.visible = canInteract && !!otherPlayer.isCameraOn;
+                if (cameraIcon) {
+                    cameraIcon.visible = canInteract && !!otherPlayer.isCameraOn;
+                    cameraIcon.x = 15; // Position it next to the mic icon
+                }
                 iconContainer.x = otherSprite.x - 7.5;
                 iconContainer.y = otherSprite.y - (otherSprite.height * otherSprite.scale.y) - 20;
                 iconContainer.zIndex = otherSprite.y + 1;
@@ -555,7 +556,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             world.sortChildren();
             
             // NPC Proximity Check
-            if (npcSprite && !app.destroyed) {
+            if (npcSprite) {
                 const distance = Math.hypot(playerSprite.x - npcSprite.x, playerSprite.y - npcSprite.y);
                 const isNear = distance < NPC_PROXIMITY_RANGE;
                 if (isNear !== npcProximityState) {
@@ -573,21 +574,23 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 }
             }
         };
+
         app.ticker.add(tickerCallback);
+
+      } catch (error) {
+        console.error("Error during Pixi initialization:", error);
+      }
     };
 
     // Run the async init function
-    init().catch(err => {
-      console.error("Failed to initialize Pixi canvas:", err);
-    });
+    init();
 
-    // The single, reliable cleanup function.
+    // 4. The single, reliable cleanup function.
     return () => {
       isDestroyed = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      // Safety check: ensure the app instance exists and hasn't been destroyed.
       if (app && !app.destroyed) {
         if (tickerCallback) {
             app.ticker.remove(tickerCallback);
@@ -600,34 +603,5 @@ const PixiCanvas = (props: PixiCanvasProps) => {
   return <div ref={pixiContainerRef} className="w-full h-full" />;
 };
 
-
-// --- Helper Functions for creating UI elements in Pixi ---
-
-function createNpcProximityIndicator(world: Container) {
-    const indicator = new Graphics();
-    indicator.circle(0, 0, 20).stroke({ width: 2, color: 0xFFFF00, alpha: 0.8 });
-    indicator.visible = false;
-    indicator.zIndex = 9999;
-    world.addChild(indicator);
-    return indicator;
-}
-
-function createMicIcon() {
-    const mic = new Graphics();
-    mic.roundRect(-4, -8, 8, 10, 4).fill(0xCCCCCC); // Main body
-    mic.rect(-1.5, 2, 3, 5).fill(0x999999); // Stand
-    mic.name = 'mic';
-    mic.visible = false;
-    return mic;
-}
-
-function createCameraIcon() {
-    const camera = new Graphics();
-    camera.roundRect(-8, -5, 16, 10, 3).fill(0x999999); // Body
-    camera.circle(2, 0, 3).fill(0x44DDFF); // Lens
-    camera.name = 'camera';
-    camera.visible = false;
-    return camera;
-}
 
 export default PixiCanvas;
