@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useRef, useLayoutEffect, useEffect } from 'react';
@@ -10,7 +11,6 @@ import { throttle } from 'lodash';
 import lobbyImage from '@/assets/lobby.jpg';
 import mapData from '@/assets/map.json';
 
-// Define all props and constants at the top level
 interface PixiCanvasProps {
   currentPlayer: Player;
   onlinePlayers: Player[];
@@ -25,7 +25,7 @@ const TILE_SIZE = mapData.tilewidth;
 const MAP_WIDTH_TILES = mapData.width;
 const MAP_HEIGHT_TILES = mapData.height;
 const TILESET_URL = '/topDown_baseTiles.png'; 
-const TILESET_COLUMNS = 33; // From tiles.tsx: width 528 / tilewidth 16 = 33
+const TILESET_COLUMNS = 33; 
 
 const NPC = {
   uid: 'npc-quest-giver',
@@ -39,7 +39,6 @@ const NPC = {
 const PROXIMITY_RANGE = 75;
 const NPC_PROXIMITY_RANGE = 50;
 
-// Helper functions for creating UI elements
 function createNpcProximityIndicator(world: Container) {
     const indicator = new Graphics();
     indicator.circle(0, 0, 20).stroke({ width: 2, color: 0xFFFF00, alpha: 0.8 });
@@ -51,8 +50,8 @@ function createNpcProximityIndicator(world: Container) {
 
 function createMicIcon() {
     const mic = new Graphics();
-    mic.roundRect(-4, -8, 8, 10, 4).fill(0xCCCCCC); // Main body
-    mic.rect(-1.5, 2, 3, 5).fill(0x999999); // Stand
+    mic.roundRect(-4, -8, 8, 10, 4).fill(0xCCCCCC); 
+    mic.rect(-1.5, 2, 3, 5).fill(0x999999); 
     mic.name = 'mic';
     mic.visible = false;
     return mic;
@@ -60,14 +59,13 @@ function createMicIcon() {
 
 function createCameraIcon() {
     const camera = new Graphics();
-    camera.roundRect(-8, -5, 16, 10, 3).fill(0x999999); // Body
-    camera.circle(2, 0, 3).fill(0x44DDFF); // Lens
+    camera.roundRect(-8, -5, 16, 10, 3).fill(0x999999); 
+    camera.circle(2, 0, 3).fill(0x44DDFF); 
     camera.name = 'camera';
     camera.visible = false;
     return camera;
 }
 
-// The main component
 const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const propsRef = useRef(props);
@@ -80,10 +78,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
-    // --- Stable Pattern Implementation ---
-    let isDestroyed = false;
-    
-    // 1. Create the app instance sychronously.
     const app = new Application();
     
     const keysDown: Record<string, boolean> = {};
@@ -92,7 +86,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     
-    // 2. Asynchronous initialization logic in a dedicated function.
+    let isDestroyed = false;
+    
     const init = async () => {
       try {
         await app.init({
@@ -101,7 +96,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-        if (isDestroyed) return; // 3. Check cancellation flag after await
+        if (isDestroyed) return;
 
         pixiElement.appendChild(app.view);
         
@@ -109,7 +104,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         world.sortableChildren = true;
         app.stage.addChild(world);
         
-        // --- Map Rendering ---
         const mapContainer = new Container();
         mapContainer.zIndex = 0;
         world.addChild(mapContainer);
@@ -154,7 +148,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             }
         });
 
-        // --- Lobby Setup ---
         const lobby = new Container();
         app.stage.addChild(lobby);
         
@@ -185,7 +178,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         });
         lobby.addChild(enterButton);
 
-        // --- Game Object Management ---
         const playerSprites: Record<string, PlayerSprite> = {};
         const playerText: Record<string, Text> = {};
         const playerInteractionIcons: Record<string, Container> = {};
@@ -247,7 +239,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let npcProximityState = false;
 
-        // --- Resize Handler ---
         const resizeHandler = () => {
             if (isDestroyed) return;
             const screenWidth = app.screen.width;
@@ -289,7 +280,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.renderer.on('resize', resizeHandler);
         resizeHandler();
       
-        // --- Database Sync (throttled) ---
         const updatePlayerInDb = throttle((data: Partial<Player>) => {
             if (isDestroyed) return;
             const { currentPlayer: localPlayer } = propsRef.current;
@@ -298,7 +288,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             update(playerRef, data);
         }, 100);
 
-        // --- Collision Detection ---
         const checkCollision = (x: number, y: number): boolean => {
             if (!collisionMap.length) return false;
             const playerWidth = 16 * 0.5;
@@ -323,14 +312,12 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             return false;
         };
         
-        // --- Game Loop (Ticker) ---
         const tickerCallback = (time: Ticker) => {
             if (isDestroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
             
-            // --- Update Player Sprites ---
             const allPlayers = localPlayer ? [localPlayer, ...onlinePlayers] : onlinePlayers;
             const activePlayerIds = new Set(allPlayers.map(p => p.uid));
     
@@ -427,8 +414,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             const playerSprite = playerSprites[localPlayer.uid];
             if (!playerSprite || !playerSprite.parent) return;
 
-            // --- Player Movement ---
-            const speed = 2.0; // Adjusted speed
+            const speed = 2.0; 
             let dx = 0; let dy = 0;
             if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
             if (keysDown['s'] || keysDown['arrowdown']) dy += 1;
@@ -438,7 +424,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as any || 'front';
             let moved = false;
             
-            // Using deltaTime for frame-rate independent movement
             const moveX = dx * speed * time.deltaTime;
             const moveY = dy * speed * time.deltaTime;
 
@@ -485,7 +470,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 if (playerSprite.playing) playerSprite.gotoAndStop(0);
             }
             
-            // --- Update Z-index and Text/Icon positions ---
             for (const uid in playerSprites) {
               const sprite = playerSprites[uid];
               const text = playerText[uid];
@@ -529,7 +513,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 if (micIcon) micIcon.visible = canInteract && !!otherPlayer.isMicOn;
                 if (cameraIcon) {
                     cameraIcon.visible = canInteract && !!otherPlayer.isCameraOn;
-                    cameraIcon.x = 15; // Position it next to the mic icon
+                    cameraIcon.x = 15;
                 }
                 iconContainer.x = otherSprite.x - 7.5;
                 iconContainer.y = otherSprite.y - (otherSprite.height * otherSprite.scale.y) - 20;
@@ -538,7 +522,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
             world.sortChildren();
             
-            // NPC Proximity Check
             if (npcSprite) {
                 const distance = Math.hypot(playerSprite.x - npcSprite.x, playerSprite.y - npcSprite.y);
                 const isNear = distance < NPC_PROXIMITY_RANGE;
@@ -568,7 +551,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
     init();
 
-    // 4. The single, reliable cleanup function.
     return () => {
       isDestroyed = true;
       window.removeEventListener('keydown', onKeyDown);
