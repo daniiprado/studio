@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useRef, useLayoutEffect, useEffect } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle, Rectangle } from 'pixi.js';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle, Rectangle } from 'pii.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
@@ -574,7 +574,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 }
             }
         };
-
+        
+        if (isDestroyed) return;
         app.ticker.add(tickerCallback);
 
       } catch (error) {
