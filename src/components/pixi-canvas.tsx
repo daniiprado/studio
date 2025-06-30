@@ -78,9 +78,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
-    let app: Application | null = new Application();
-    let tickerCallback: ((time: Ticker) => void) | null = null;
-    
+    let isDestroyed = false;
+    const app = new Application();
+
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
@@ -88,8 +88,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     window.addEventListener('keyup', onKeyUp);
     
     const init = async () => {
-        if (!app) return;
-
       try {
         await app.init({
             resizeTo: pixiElement,
@@ -97,6 +95,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
+
+        if (isDestroyed) return;
 
         pixiElement.appendChild(app.view);
         
@@ -108,22 +108,27 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         mapContainer.zIndex = 0;
         world.addChild(mapContainer);
         
-        const tilesetTexture = await Assets.load<Texture>(TILESET_URL);
+        const [tilesetTexture, loadedMapData] = await Promise.all([
+          Assets.load<Texture>(TILESET_URL),
+          Promise.resolve(mapData)
+        ]);
+
+        if (isDestroyed) return;
         
         let collisionMap: boolean[][] = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(false));
         let officeMap: number[][] = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(0));
 
-        mapData.layers.forEach(layer => {
-            const { data, width, height, name, visible } = layer;
-            if (!visible) return;
+        loadedMapData.layers.forEach(layer => {
+            if (!layer.visible) return;
+            const { data, width, name } = layer;
 
-            for (let y = 0; y < height; y++) {
+            for (let y = 0; y < layer.height; y++) {
                 for (let x = 0; x < width; x++) {
                     const i = y * width + x;
                     const gid = data[i];
                     if (gid === 0) continue;
 
-                    const tileIndex = gid - mapData.tilesets[0].firstgid;
+                    const tileIndex = gid - loadedMapData.tilesets[0].firstgid;
                     const sx = (tileIndex % TILESET_COLUMNS) * TILE_SIZE;
                     const sy = Math.floor(tileIndex / TILESET_COLUMNS) * TILE_SIZE;
                     
@@ -151,7 +156,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
-        
+        if (isDestroyed) return;
+
         const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
         lobby.addChild(background);
@@ -190,8 +196,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 loadingSheets[NPC.characterId] = true;
                 try {
                     const npcBaseTexture = await Assets.load<Texture>(character.png.src);
+                    if (isDestroyed) return null;
                     const sheet = new Spritesheet(npcBaseTexture, character.json);
                     await sheet.parse();
+                    if (isDestroyed) return null;
                     loadedSheets[NPC.characterId] = sheet;
                 } catch(e) {
                     console.error(`Failed to load character sheet for ${NPC.characterId}`, e);
@@ -230,12 +238,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         }
 
         const npcSprite = await createNpcSpriteInternal();
+        if (isDestroyed) return;
         
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let npcProximityState = false;
 
         const resizeHandler = () => {
-            if (!app || !app.renderer) return;
+            if (app.destroyed) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
@@ -306,8 +315,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             return false;
         };
         
-        tickerCallback = (time: Ticker) => {
-            if (!app) return;
+        const tickerCallback = (time: Ticker) => {
+            if (app.destroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
@@ -337,8 +346,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                             (async () => {
                                 try {
                                     const charBaseTexture = await Assets.load<Texture>(character.png.src);
+                                    if(isDestroyed) return;
                                     const sheet = new Spritesheet(charBaseTexture, character.json);
                                     await sheet.parse();
+                                    if(isDestroyed) return;
                                     loadedSheets[player.characterId] = sheet;
                                 } catch(e) {
                                     console.error(`Failed to load character sheet for ${player.characterId}`, e);
@@ -401,7 +412,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 }
             }
 
-
             if (gameState !== 'playing' || !localPlayer) return;
             const playerSprite = playerSprites[localPlayer.uid];
             if (!playerSprite || !playerSprite.parent) return;
@@ -441,7 +451,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             if (moved) {
                 if (dy < 0) newDirection = 'back';
                 else if (dy > 0) newDirection = 'front';
-                if (dx < 0) newDirection = 'left';
+                else if (dx < 0) newDirection = 'left';
                 else if (dx > 0) newDirection = 'right';
 
                 updatePlayerInDb({ x: playerSprite.x, y: playerSprite.y, direction: newDirection });
@@ -537,9 +547,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
       } catch (error) {
         console.error("Error during Pixi initialization:", error);
-        if (app && !app.destroyed) {
+        if (!app.destroyed) {
           app.destroy(true, { children: true, texture: true, baseTexture: true });
-          app = null;
         }
       }
     };
@@ -547,16 +556,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     init();
 
     return () => {
+      isDestroyed = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      if (app && !app.destroyed) {
-        if(tickerCallback && app.ticker) {
-            app.ticker.remove(tickerCallback);
-        }
+      if (!app.destroyed) {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
-      app = null;
     };
   }, []);
 
