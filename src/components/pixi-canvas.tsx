@@ -78,10 +78,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
-    let isDestroyed = false;
-    
-    // 1. Create the application instance SYNCHRONOUSLY.
-    const app = new Application();
+    let app: Application | null = new Application();
+    let tickerCallback: ((time: Ticker) => void) | null = null;
     
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
@@ -89,10 +87,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     
-    let tickerCallback: ((time: Ticker) => void) | null = null;
-    
-    // 2. The async part of initialization.
     const init = async () => {
+        if (!app) return;
+
       try {
         await app.init({
             resizeTo: pixiElement,
@@ -100,7 +97,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
-        if (isDestroyed) return;
 
         pixiElement.appendChild(app.view);
         
@@ -113,8 +109,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         world.addChild(mapContainer);
         
         const tilesetTexture = await Assets.load<Texture>(TILESET_URL);
-        if (isDestroyed) return;
-
+        
         let collisionMap: boolean[][] = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(false));
         let officeMap: number[][] = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(0));
 
@@ -156,8 +151,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.stage.addChild(lobby);
         
         const backgroundLobbyTexture = await Assets.load(lobbyImage.src);
-        if (isDestroyed) return;
-
+        
         const background = new Sprite(backgroundLobbyTexture);
         background.anchor.set(0.5);
         lobby.addChild(background);
@@ -178,7 +172,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         enterButton.eventMode = 'static';
         enterButton.cursor = 'pointer';
         enterButton.on('pointertap', () => {
-          if (!isDestroyed) propsRef.current.setGameState('playing');
+          propsRef.current.setGameState('playing');
         });
         lobby.addChild(enterButton);
 
@@ -196,10 +190,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                 loadingSheets[NPC.characterId] = true;
                 try {
                     const npcBaseTexture = await Assets.load<Texture>(character.png.src);
-                    if (isDestroyed) return null;
                     const sheet = new Spritesheet(npcBaseTexture, character.json);
                     await sheet.parse();
-                    if (isDestroyed) return null;
                     loadedSheets[NPC.characterId] = sheet;
                 } catch(e) {
                     console.error(`Failed to load character sheet for ${NPC.characterId}`, e);
@@ -238,13 +230,12 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         }
 
         const npcSprite = await createNpcSpriteInternal();
-        if (isDestroyed) return;
         
         const npcProximityIndicator = createNpcProximityIndicator(world);
         let npcProximityState = false;
 
         const resizeHandler = () => {
-            if (isDestroyed || !app.renderer) return;
+            if (!app || !app.renderer) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
@@ -285,7 +276,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         resizeHandler();
       
         const updatePlayerInDb = throttle((data: Partial<Player>) => {
-            if (isDestroyed) return;
             const { currentPlayer: localPlayer } = propsRef.current;
             if (!localPlayer) return;
             const playerRef = ref(rtdb, `players/${localPlayer.uid}`);
@@ -317,7 +307,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
         
         tickerCallback = (time: Ticker) => {
-            if (isDestroyed) return;
+            if (!app) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
             resizeHandler();
@@ -347,10 +337,8 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                             (async () => {
                                 try {
                                     const charBaseTexture = await Assets.load<Texture>(character.png.src);
-                                    if (isDestroyed) return;
                                     const sheet = new Spritesheet(charBaseTexture, character.json);
                                     await sheet.parse();
-                                    if(isDestroyed) return;
                                     loadedSheets[player.characterId] = sheet;
                                 } catch(e) {
                                     console.error(`Failed to load character sheet for ${player.characterId}`, e);
@@ -545,31 +533,30 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             }
         };
         
-        if (isDestroyed) return;
         app.ticker.add(tickerCallback);
 
       } catch (error) {
-        if (!isDestroyed) {
-          console.error("Error during Pixi initialization:", error);
+        console.error("Error during Pixi initialization:", error);
+        if (app && !app.destroyed) {
+          app.destroy(true, { children: true, texture: true, baseTexture: true });
+          app = null;
         }
       }
     };
 
     init();
 
-    // 3. The cleanup function.
     return () => {
-      isDestroyed = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      if (tickerCallback) {
-        app.ticker.remove(tickerCallback);
-      }
-      
-      if (!app.destroyed) {
+      if (app && !app.destroyed) {
+        if(tickerCallback && app.ticker) {
+            app.ticker.remove(tickerCallback);
+        }
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
+      app = null;
     };
   }, []);
 
