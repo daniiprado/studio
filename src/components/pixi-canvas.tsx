@@ -567,7 +567,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.ticker.remove(tickerCallback);
       }
       
-      if (app && !app.destroyed) {
+      if (!app.destroyed) {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
