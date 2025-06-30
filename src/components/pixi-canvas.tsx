@@ -78,16 +78,19 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
+    // 1. Create the application instance SYNCHRONOUSLY.
     const app = new Application();
     
+    // Flag to prevent async operations from continuing after unmount.
+    let isDestroyed = false;
+
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     
-    let isDestroyed = false;
-    
+    // 2. The async part of initialization.
     const init = async () => {
       try {
         await app.init({
@@ -240,7 +243,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         let npcProximityState = false;
 
         const resizeHandler = () => {
-            if (isDestroyed) return;
+            if (isDestroyed || !app.renderer) return;
             const screenWidth = app.screen.width;
             const screenHeight = app.screen.height;
             const { gameState: currentGameState } = propsRef.current;
@@ -551,12 +554,13 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
     init();
 
+    // 3. The cleanup function.
     return () => {
       isDestroyed = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      if (app && !app.destroyed) {
+      if (!app.destroyed) {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
