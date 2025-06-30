@@ -78,8 +78,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
-    let isDestroyed = false;
+    // Create the app instance synchronously. It will never be undefined in the cleanup.
     const app = new Application();
+    
+    // Use a cancellation flag to stop async operations if the component unmounts.
+    let isDestroyed = false;
 
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
@@ -95,6 +98,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
+        // Check flag after every await
         if (isDestroyed) return;
 
         pixiElement.appendChild(app.view);
@@ -551,11 +555,14 @@ const PixiCanvas = (props: PixiCanvasProps) => {
 
     init();
 
+    // The robust cleanup function.
     return () => {
       isDestroyed = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
+      // `app` is guaranteed to be defined here from the synchronous creation above.
+      // The only check we need is if it has already been destroyed.
       if (!app.destroyed) {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
