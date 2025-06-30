@@ -1,8 +1,7 @@
-
 'use client';
 
 import React, { useRef, useLayoutEffect, useEffect } from 'react';
-import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle, Rectangle } from 'pixi.js';
+import { Application, Container, AnimatedSprite, Text, Assets, Spritesheet, Graphics, Sprite, Texture, TextStyle, Rectangle, Ticker } from 'pixi.js';
 import type { Player } from '@/lib/types';
 import { CHARACTERS_MAP } from '@/lib/characters';
 import { rtdb } from '@/lib/firebase';
@@ -26,6 +25,7 @@ const TILE_SIZE = mapData.tilewidth;
 const MAP_WIDTH_TILES = mapData.width;
 const MAP_HEIGHT_TILES = mapData.height;
 const TILESET_URL = '/topDown_baseTiles.png'; 
+const TILESET_COLUMNS = 33; // From tiles.tsx: width 528 / tilewidth 16 = 33
 
 const NPC = {
   uid: 'npc-quest-giver',
@@ -72,7 +72,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const propsRef = useRef(props);
   
-  // Keep propsRef updated with the latest props
   useEffect(() => {
     propsRef.current = props;
   });
@@ -84,13 +83,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     // --- Stable Pattern Implementation ---
     let isDestroyed = false;
     
-    // 1. Create the app instance sychronously. It's a `const` for this effect's lifecycle.
+    // 1. Create the app instance sychronously.
     const app = new Application();
     
-    // Declare all other long-lived variables here.
-    let tickerCallback: ((time: any) => void) | null = null;
     const keysDown: Record<string, boolean> = {};
-
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     window.addEventListener('keydown', onKeyDown);
@@ -118,64 +114,45 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         mapContainer.zIndex = 0;
         world.addChild(mapContainer);
         
-        const baseTexture = await Assets.load<Texture>(TILESET_URL);
+        const tilesetTexture = await Assets.load<Texture>(TILESET_URL);
         if (isDestroyed) return;
 
-        const tilesetInfo = mapData.tilesets[0];
-        const tilesetCols = 33;
-        const firstGid = tilesetInfo.firstgid;
+        let collisionMap: boolean[][] = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(false));
+        let officeMap: number[][] = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(0));
 
-        const baseLayer = mapData.layers.find(l => l.name === 'base');
-        const treesLayer = mapData.layers.find(l => l.name === 'trees');
-        const officesLayer = mapData.layers.find(l => l.name === 'offices');
+        mapData.layers.forEach(layer => {
+            const { data, width, height, name, visible } = layer;
+            if (!visible) return;
 
-        // Initialized here, used in ticker
-        let collisionMap: boolean[][] = [];
-        let officeMap: number[][] = [];
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const i = y * width + x;
+                    const gid = data[i];
+                    if (gid === 0) continue;
 
-        if (baseLayer) {
-            for (let i = 0; i < baseLayer.data.length; i++) {
-                const gid = baseLayer.data[i];
-                if (gid === 0) continue;
+                    const tileIndex = gid - mapData.tilesets[0].firstgid;
+                    const sx = (tileIndex % TILESET_COLUMNS) * TILE_SIZE;
+                    const sy = Math.floor(tileIndex / TILESET_COLUMNS) * TILE_SIZE;
+                    
+                    const texture = new Texture({
+                        source: tilesetTexture.source,
+                        frame: new Rectangle(sx, sy, TILE_SIZE, TILE_SIZE),
+                    });
 
-                const tileIndex = gid - firstGid;
-                const sx = (tileIndex % tilesetCols) * TILE_SIZE;
-                const sy = Math.floor(tileIndex / tilesetCols) * TILE_SIZE;
+                    const tileSprite = new Sprite(texture);
+                    tileSprite.x = x * TILE_SIZE;
+                    tileSprite.y = y * TILE_SIZE;
+                    mapContainer.addChild(tileSprite);
 
-                const texture = new Texture({
-                    source: baseTexture.source,
-                    frame: new Rectangle(sx, sy, TILE_SIZE, TILE_SIZE),
-                });
-
-                const tileSprite = new Sprite(texture);
-                tileSprite.x = (i % MAP_WIDTH_TILES) * TILE_SIZE;
-                tileSprite.y = Math.floor(i / MAP_WIDTH_TILES) * TILE_SIZE;
-                mapContainer.addChild(tileSprite);
-            }
-        }
-        
-        if (treesLayer) {
-            collisionMap = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(false));
-            for (let i = 0; i < treesLayer.data.length; i++) {
-                if (treesLayer.data[i] !== 0) {
-                    const x = i % MAP_WIDTH_TILES;
-                    const y = Math.floor(i / MAP_WIDTH_TILES);
-                    collisionMap[y][x] = true;
+                    if (name === 'trees') {
+                        collisionMap[y][x] = true;
+                    }
+                    if (name === 'offices') {
+                        officeMap[y][x] = gid;
+                    }
                 }
             }
-        }
-        
-        if (officesLayer) {
-            officeMap = Array.from({ length: MAP_HEIGHT_TILES }, () => Array(MAP_WIDTH_TILES).fill(0));
-            for (let i = 0; i < officesLayer.data.length; i++) {
-                const gid = officesLayer.data[i];
-                if (gid !== 0) {
-                    const tileX = i % MAP_WIDTH_TILES;
-                    const tileY = Math.floor(i / MAP_WIDTH_TILES);
-                    officeMap[tileY][tileX] = gid;
-                }
-            }
-        }
+        });
 
         // --- Lobby Setup ---
         const lobby = new Container();
@@ -347,11 +324,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         };
         
         // --- Game Loop (Ticker) ---
-        tickerCallback = () => {
+        const tickerCallback = (time: Ticker) => {
             if (isDestroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
-            resizeHandler(); // Keep resizing logic in the loop
+            resizeHandler();
             
             // --- Update Player Sprites ---
             const allPlayers = localPlayer ? [localPlayer, ...onlinePlayers] : onlinePlayers;
@@ -451,7 +428,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             if (!playerSprite || !playerSprite.parent) return;
 
             // --- Player Movement ---
-            const speed = 2.5;
+            const speed = 2.0; // Adjusted speed
             let dx = 0; let dy = 0;
             if (keysDown['w'] || keysDown['arrowup']) dy -= 1;
             if (keysDown['s'] || keysDown['arrowdown']) dy += 1;
@@ -460,8 +437,14 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             
             let newDirection: Player['direction'] = playerSprite.currentAnimationName?.split('_')[0] as any || 'front';
             let moved = false;
-            const targetX = playerSprite.x + dx * speed;
-            const targetY = playerSprite.y + dy * speed;
+            
+            // Using deltaTime for frame-rate independent movement
+            const moveX = dx * speed * time.deltaTime;
+            const moveY = dy * speed * time.deltaTime;
+
+            const targetX = playerSprite.x + moveX;
+            const targetY = playerSprite.y + moveY;
+
             if (dx !== 0 || dy !== 0) {
                 let canMoveX = !checkCollision(targetX, playerSprite.y);
                 let canMoveY = !checkCollision(playerSprite.x, targetY);
@@ -583,7 +566,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       }
     };
 
-    // Run the async init function
     init();
 
     // 4. The single, reliable cleanup function.
@@ -593,13 +575,10 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       window.removeEventListener('keyup', onKeyUp);
       
       if (app && !app.destroyed) {
-        if (tickerCallback) {
-            app.ticker.remove(tickerCallback);
-        }
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
-  }, []); // Empty dependency array ensures this effect runs only once on mount and cleans up on unmount.
+  }, []);
 
   return <div ref={pixiContainerRef} className="w-full h-full" />;
 };
