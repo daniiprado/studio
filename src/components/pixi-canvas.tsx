@@ -78,17 +78,18 @@ const PixiCanvas = (props: PixiCanvasProps) => {
     const pixiElement = pixiContainerRef.current;
     if (!pixiElement) return;
 
+    let isDestroyed = false;
+    
     // 1. Create the application instance SYNCHRONOUSLY.
     const app = new Application();
     
-    // Flag to prevent async operations from continuing after unmount.
-    let isDestroyed = false;
-
     const keysDown: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = true; };
     const onKeyUp = (e: KeyboardEvent) => { keysDown[e.key.toLowerCase()] = false; };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    
+    let tickerCallback: ((time: Ticker) => void) | null = null;
     
     // 2. The async part of initialization.
     const init = async () => {
@@ -315,7 +316,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
             return false;
         };
         
-        const tickerCallback = (time: Ticker) => {
+        tickerCallback = (time: Ticker) => {
             if (isDestroyed) return;
 
             const { gameState, currentPlayer: localPlayer, onlinePlayers, onProximityChange } = propsRef.current;
@@ -548,7 +549,9 @@ const PixiCanvas = (props: PixiCanvasProps) => {
         app.ticker.add(tickerCallback);
 
       } catch (error) {
-        console.error("Error during Pixi initialization:", error);
+        if (!isDestroyed) {
+          console.error("Error during Pixi initialization:", error);
+        }
       }
     };
 
@@ -560,7 +563,11 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       
-      if (!app.destroyed) {
+      if (tickerCallback) {
+        app.ticker.remove(tickerCallback);
+      }
+      
+      if (app && !app.destroyed) {
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       }
     };
