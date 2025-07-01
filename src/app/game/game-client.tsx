@@ -254,24 +254,24 @@ export default function GameClient() {
         </main>
         
         <header className={cn(
-          "absolute top-0 left-0 z-10 flex items-center justify-between p-4 bg-card/50 border-b border-border backdrop-blur-sm transition-[right] duration-300 ease-in-out",
+          "absolute top-0 left-0 z-10 flex items-center justify-between px-4 py-2 bg-card/50 border-b border-border backdrop-blur-sm transition-[right] duration-300 ease-in-out",
           isSidebarOpen ? "right-[300px]" : "right-0"
         )}>
-            <h1 className="font-headline text-white font-bold tracking-wider">ServiPals</h1>
-            <div className="flex items-center gap-4">
+            <h1 className="font-headline text-xl text-white font-bold tracking-wider">ServiPals</h1>
+            <div className="flex items-center gap-2">
             <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setSidebarOpen(!isSidebarOpen)}
-                className="text-foreground hover:text-accent hover:bg-white/10"
+                className="h-8 w-8 text-foreground hover:text-accent hover:bg-white/10"
                 >
                 {isSidebarOpen ? <PanelRightClose /> : <PanelRightOpen />}
                 <span className="sr-only">Toggle Sidebar</span>
                 </Button>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-5 w-5 rounded-full">
-                    <Avatar>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0">
+                    <Avatar className="h-8 w-8">
                     <AvatarImage src={user.photoURL ?? undefined} alt={user.displayName ?? 'User'} />
                     <AvatarFallback>{user.displayName?.charAt(0)}</AvatarFallback>
                     </Avatar>
