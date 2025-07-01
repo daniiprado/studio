@@ -16,35 +16,35 @@ const RightSidebar = () => {
 
     return (
         <div className="h-full flex flex-col bg-sidebar text-sidebar-foreground">
-            <header className="p-4 border-b border-sidebar-border">
-                <h2 className="font-headline text-xl text-sidebar-primary-foreground">Daily Quests</h2>
-                <p className="text-sm text-muted-foreground">Synced from Google</p>
+            <header className="p-3 border-b border-sidebar-border">
+                <h2 className="font-headline text-lg text-sidebar-primary-foreground">Daily Quests</h2>
+                <p className="text-xs text-muted-foreground">Synced from Google</p>
             </header>
             
             <ScrollArea className="flex-1">
-                <div className="p-4 space-y-6">
+                <div className="p-3 space-y-4">
                     {gapiReady === 'loading' && (
                         <div className="flex items-center justify-center p-8">
                             <Loader2 className="animate-spin text-accent" />
-                            <p className="ml-2">Connecting to Google...</p>
+                            <p className="ml-2 text-sm">Connecting...</p>
                         </div>
                     )}
                     {gapiReady === 'error' && (
-                        <div className="text-destructive-foreground p-4 bg-destructive rounded-md">
-                            Could not connect to Google APIs. Please try refreshing or re-logging.
+                        <div className="text-destructive-foreground text-sm p-3 bg-destructive rounded-md">
+                            Could not connect to Google APIs. Please try re-logging.
                         </div>
                     )}
                     {gapiReady === 'ready' && (
                         <>
                             <div>
-                                <h3 className="flex items-center font-headline text-lg mb-2 text-accent">
-                                    <Calendar className="mr-2 h-5 w-5"/>
+                                <h3 className="flex items-center font-headline text-base mb-2 text-accent">
+                                    <Calendar className="mr-2 h-4 w-4"/>
                                     Today's Events
                                 </h3>
                                 <div className="space-y-2">
                                     {events.length > 0 ? events.map(event => (
-                                        <div key={event.id} className="p-3 rounded-md bg-sidebar-accent/30 border border-sidebar-border">
-                                            <p className="font-semibold text-sidebar-accent-foreground">{event.summary}</p>
+                                        <div key={event.id} className="p-2 rounded-md bg-sidebar-accent/30 border border-sidebar-border">
+                                            <p className="font-medium text-sm text-sidebar-accent-foreground">{event.summary}</p>
                                             <p className="text-xs text-muted-foreground">{formatTime(event.start?.dateTime)} - {formatTime(event.end?.dateTime)}</p>
                                         </div>
                                     )) : <p className="text-sm text-muted-foreground">No events for today.</p>}
@@ -52,14 +52,14 @@ const RightSidebar = () => {
                             </div>
 
                             <div>
-                                <h3 className="flex items-center font-headline text-lg mb-2 text-accent">
-                                    <CheckSquare className="mr-2 h-5 w-5"/>
+                                <h3 className="flex items-center font-headline text-base mb-2 text-accent">
+                                    <CheckSquare className="mr-2 h-4 w-4"/>
                                     Active Tasks
                                 </h3>
                                 <div className="space-y-2">
                                     {tasks.length > 0 ? tasks.map(task => (
-                                        <div key={task.id} className="p-3 rounded-md bg-sidebar-accent/30 border border-sidebar-border">
-                                            <p className="font-semibold text-sidebar-accent-foreground">{task.title}</p>
+                                        <div key={task.id} className="p-2 rounded-md bg-sidebar-accent/30 border border-sidebar-border">
+                                            <p className="font-medium text-sm text-sidebar-accent-foreground">{task.title}</p>
                                             {task.due && <p className="text-xs text-muted-foreground">Due: {format(parseISO(task.due), 'MMM d, yyyy')}</p>}
                                         </div>
                                     )) : <p className="text-sm text-muted-foreground">No active tasks.</p>}

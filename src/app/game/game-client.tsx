@@ -26,6 +26,7 @@ import dynamic from 'next/dynamic';
 import CharacterSelectionDialog from '@/components/character-selection-dialog';
 import { npcChat } from '@/ai/flows/npc-chat-flow';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 
 const PixiCanvas = dynamic(() => import('@/components/pixi-canvas'), {
   ssr: false,
@@ -252,8 +253,11 @@ export default function GameClient() {
           />
         </main>
         
-        <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between p-4 bg-card/50 border-b border-border backdrop-blur-sm">
-            <h1 className="font-headline text-2xl text-primary font-bold tracking-wider">ServiAdventures</h1>
+        <header className={cn(
+          "absolute top-0 left-0 z-10 flex items-center justify-between p-4 bg-card/50 border-b border-border backdrop-blur-sm transition-[right] duration-300 ease-in-out",
+          isSidebarOpen ? "right-[300px]" : "right-0"
+        )}>
+            <h1 className="font-headline text-white font-bold tracking-wider">ServiPals</h1>
             <div className="flex items-center gap-4">
             <Button
                 variant="ghost"
@@ -266,7 +270,7 @@ export default function GameClient() {
                 </Button>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                <Button variant="ghost" className="relative h-5 w-5 rounded-full">
                     <Avatar>
                     <AvatarImage src={user.photoURL ?? undefined} alt={user.displayName ?? 'User'} />
                     <AvatarFallback>{user.displayName?.charAt(0)}</AvatarFallback>
@@ -369,7 +373,7 @@ export default function GameClient() {
         </footer>
         
         {isSidebarOpen && (
-          <aside className="absolute right-0 top-0 bottom-0 w-[350px] flex-shrink-0 border-l border-border bg-black/20 z-20">
+          <aside className="absolute right-0 top-0 bottom-0 w-[300px] flex-shrink-0 border-l border-border bg-black/20 z-20">
             <RightSidebar />
           </aside>
         )}
