@@ -9,6 +9,7 @@ import { rtdb } from '@/lib/firebase';
 import { ref, update } from 'firebase/database';
 import { throttle } from 'lodash';
 import lobbyImage from '@/assets/lobby.jpg';
+import mapTiled from '@/assets/topDown_baseTiles_2.png';
 import mapData from '@/assets/map.json';
 
 interface PixiCanvasProps {
@@ -24,7 +25,7 @@ type PlayerSprite = AnimatedSprite & { currentAnimationName?: string; characterI
 const TILE_SIZE = mapData.tilewidth;
 const MAP_WIDTH_TILES = mapData.width;
 const MAP_HEIGHT_TILES = mapData.height;
-const TILESET_URL = '/topDown_baseTiles.png'; 
+const TILESET_URL = mapTiled.src; 
 const TILESET_COLUMNS = 33; 
 
 const NPC = {
@@ -94,7 +95,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       try {
         await app.init({
             resizeTo: pixiElement,
-            backgroundColor: 0x60bb38,
+            backgroundColor: 0x1f1f1f,
             autoDensity: true,
             resolution: window.devicePixelRatio || 1,
         });
@@ -145,7 +146,7 @@ const PixiCanvas = (props: PixiCanvasProps) => {
                     tileSprite.y = y * TILE_SIZE;
                     mapContainer.addChild(tileSprite);
 
-                    if (name === 'trees') {
+                    if (name === 'collisions') {
                         collisionMap[y][x] = true;
                     }
                     if (name === 'offices') {
@@ -560,11 +561,6 @@ const PixiCanvas = (props: PixiCanvasProps) => {
       isDestroyed = true;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      
-      // Add a truthy check for `app` itself as a final safeguard against race conditions.
-      if (app && !app.destroyed) {
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
-      }
     };
   }, []);
 
